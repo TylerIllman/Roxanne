@@ -1,0 +1,40 @@
+{
+  "name": "jarvis-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
+    "dev:renderer": "rsbuild dev --host 127.0.0.1",
+    "dev:main": "tsup src/main/main.ts src/main/preload.ts --format cjs --platform node --external electron --outDir dist-electron --watch --clean",
+    "dev:electron": "wait-on http://127.0.0.1:3000 file:dist-electron/main.js && cross-env JARVIS_RENDERER_URL=http://127.0.0.1:3000 electron dist-electron/main.js",
+    "build": "npm run build:renderer && npm run build:main",
+    "build:renderer": "rsbuild build",
+    "build:main": "tsup src/main/main.ts src/main/preload.ts --format cjs --platform node --external electron --outDir dist-electron --clean",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "katex": "^0.16.44",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0"
+  },
+  "devDependencies": {
+    "@rsbuild/core": "^1.1.0",
+    "@rsbuild/plugin-react": "^1.0.3",
+    "@tailwindcss/postcss": "^4.1.13",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^33.3.1",
+    "tailwindcss": "^4.1.13",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "wait-on": "^8.0.1"
+  }
+}

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jarvis-backend"
+version = "0.1.0"
+description = "Backend services for the Jarvis personal research copilot"
+requires-python = ">=3.9"
+dependencies = [
+  "aiofiles>=24.1.0",
+  "anthropic>=0.43.0",
+  "certifi",
+  "chromadb>=0.5.5",
+  "fastapi>=0.115.0",
+  "fastembed>=0.5.0",
+  "vosk>=0.3.44",
+  "httpx>=0.28.1",
+  "keyring>=25.6.0",
+  "openai>=1.0.0",
+  "orjson>=3.10.0",
+  "pydantic>=2.10.0",
+  "pydantic-settings>=2.7.0",
+  "pymupdf>=1.24.0",
+  "python-multipart>=0.0.20",
+  "rapidfuzz>=3.10.0",
+  "uvicorn[standard]>=0.34.0"
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["jarvis_backend*"]
