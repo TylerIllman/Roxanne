@@ -17,6 +17,15 @@ function backendWorkingDirectory() {
   return path.join(repoRoot(), "apps", "backend");
 }
 
+function desktopProjectDirectory() {
+  return path.join(repoRoot(), "apps", "desktop");
+}
+
+function developmentAppIconPath() {
+  const candidate = path.join(desktopProjectDirectory(), "build", "icon.png");
+  return fs.existsSync(candidate) ? candidate : undefined;
+}
+
 function packagedBackendPath() {
   const backendDir = path.join(process.resourcesPath, "backend");
   const candidates = process.platform === "win32"
@@ -108,6 +117,7 @@ function stopBackend() {
 
 async function createWindow() {
   const isMac = process.platform === "darwin";
+  const windowIcon = !isMac ? developmentAppIconPath() : undefined;
   mainWindow = new BrowserWindow({
     width: 1480,
     height: 980,
@@ -116,6 +126,7 @@ async function createWindow() {
     backgroundColor: "#ffffff",
     titleBarStyle: isMac ? "hiddenInset" : "hidden",
     ...(isMac ? { trafficLightPosition: { x: 16, y: 16 } } : {}),
+    ...(windowIcon ? { icon: windowIcon } : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -131,6 +142,13 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  if (process.platform === "darwin") {
+    const dockIcon = developmentAppIconPath();
+    if (dockIcon) {
+      app.dock.setIcon(dockIcon);
+    }
+  }
+
   startBackend();
   await createWindow();
 
