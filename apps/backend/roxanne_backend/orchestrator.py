@@ -399,21 +399,35 @@ class ChatOrchestrator:
             snippets = [item["document"] for item in memories]
             memory_block = "\n\nRelevant past session summaries:\n- " + "\n- ".join(snippets)
 
-        citation_rules = (
-            "\n\nCitation rules (IMPORTANT):\n"
-            "- When you use content from a paper, cite it with the author and year inline.\n"
-            "- Add a clickable reference using this exact format:\n"
-            "  [CITE:file_path_value|page_number_value|short quote]\n"
-            "- IMPORTANT: Replace file_path_value with the ACTUAL file_path string from the tool result.\n"
-            "  Replace page_number_value with the ACTUAL page_start number from the tool result.\n"
-            "  Do NOT write the literal words 'file_path' or 'page_start' — use their values.\n"
-            "- Example: If tool returns file_path='/Users/x/paper.pdf' and page_start=12, write:\n"
-            "  [CITE:/Users/x/paper.pdf|12|the relevant quote from the text]\n"
-            "- short quote: a brief excerpt (under 40 words) from the chunk you're citing.\n"
-            "- You can place multiple [CITE:...] references in one response.\n"
-            "- Never invent citations. Only cite what tools actually returned.\n"
-            "- When equations or math appear, use LaTeX: inline $...$ or display $$...$$\n"
-        )
+        if voice_mode:
+            citation_rules = (
+                "\n\nCitation rules for voice conversation:\n"
+                "- If you used a paper, mention it naturally in prose, usually as lead author plus year.\n"
+                "- Also include [CITE:file_path_value|page_number_value|short quote] tags for the UI reference chips.\n"
+                "- [CITE:...] is the ONLY structured markup allowed in voice conversation mode.\n"
+                "- Put [CITE:...] right after the sentence it supports. Do not put it on its own line.\n"
+                "- Replace file_path_value with the ACTUAL file_path string from the tool result.\n"
+                "- Replace page_number_value with the ACTUAL page_start number from the tool result.\n"
+                "- short quote: a brief excerpt (under 40 words) from the chunk you're citing.\n"
+                "- Never invent citations. Only cite what tools actually returned.\n"
+                "- Never dump full author lists, journal names, or bibliography details unless the user explicitly asks.\n"
+            )
+        else:
+            citation_rules = (
+                "\n\nCitation rules (IMPORTANT):\n"
+                "- When you use content from a paper, cite it with the author and year inline.\n"
+                "- Add a clickable reference using this exact format:\n"
+                "  [CITE:file_path_value|page_number_value|short quote]\n"
+                "- IMPORTANT: Replace file_path_value with the ACTUAL file_path string from the tool result.\n"
+                "  Replace page_number_value with the ACTUAL page_start number from the tool result.\n"
+                "  Do NOT write the literal words 'file_path' or 'page_start' — use their values.\n"
+                "- Example: If tool returns file_path='/Users/x/paper.pdf' and page_start=12, write:\n"
+                "  [CITE:/Users/x/paper.pdf|12|the relevant quote from the text]\n"
+                "- short quote: a brief excerpt (under 40 words) from the chunk you're citing.\n"
+                "- You can place multiple [CITE:...] references in one response.\n"
+                "- Never invent citations. Only cite what tools actually returned.\n"
+                "- When equations or math appear, use LaTeX: inline $...$ or display $$...$$\n"
+            )
 
         voice_instructions = ""
         if voice_mode:
@@ -422,9 +436,17 @@ class ChatOrchestrator:
                 "You are in a live voice conversation. Every word you write gets spoken aloud.\n\n"
                 "RULES — no exceptions:\n"
                 "- MAX 2-3 sentences per response. If more is needed, summarise then ask 'Want details?'\n"
-                "- NO markdown, NO bullet points, NO formatting of any kind.\n"
-                "- Sound human. Short punchy sentences. Contractions are good.\n"
-                "- Verbal citations only: 'Smith 2023 found that…' — never [CITE:…] format.\n\n"
+                "- Speak in natural prose only.\n"
+                "- NO markdown, NO bullet points, NO numbered lists, NO headings, NO section labels, NO formatting of any kind.\n"
+                "- Return plain text only. The only allowed markup is [CITE:...] citation tags for paper references.\n"
+                "- Never output literal markdown markers like #, *, -, backticks, tables, or link syntax.\n"
+                "- Sound human and conversational, like a smart person talking naturally.\n"
+                "- Lead with the answer the user actually wants, not background setup.\n"
+                "- Keep the focus on the main point. Do not list long author rosters, journals, tags, or metadata unless the user explicitly asks.\n"
+                "- If you are about to make a list, rewrite it as a short spoken explanation instead.\n"
+                "- Default to one short paragraph. Only split into two short paragraphs if it really improves clarity.\n"
+                "- Contractions are good. Short punchy sentences are good.\n"
+                "- Cite conversationally in the sentence itself, like 'Smith 2023 found that…', and also attach the matching [CITE:...] tag.\n\n"
                 "TOOL NARRATION (critical):\n"
                 "- Before EVERY tool call, say exactly ONE phrase (3-6 words).\n"
                 "  Examples: 'Searching now.' / 'Let me check.' / 'Pulling that up.' / 'One sec.'\n"
@@ -436,14 +458,18 @@ class ChatOrchestrator:
         typing_instructions = ""
         if not voice_mode:
             typing_instructions = (
-                "\n\nTYPING MODE — detailed responses:\n"
-                "- Give thorough, well-structured answers with markdown formatting.\n"
+                "\n\nTYPING MODE — normal chat with useful detail:\n"
+                "- Answer like a strong normal chatbot: direct first, then useful supporting detail.\n"
+                "- By default, give moderate detail, not an exhaustive wall of text.\n"
+                "- If the user explicitly asks for lots of detail, a deep dive, or a full breakdown, then expand substantially.\n"
+                "- Do not dump long author lists, tags, DOIs, or other bibliographic metadata unless it helps answer the question or the user asks for it.\n"
+                "- Give thorough, well-structured answers with markdown formatting when helpful.\n"
                 "- Use headings, bullet points, tables, and code blocks where helpful.\n"
                 "- For math/equations, ALWAYS use LaTeX: inline $x^2$ or display blocks $$\\sum_{i=1}^n x_i$$\n"
                 "- When reproducing equations from papers, convert them to proper LaTeX notation.\n"
                 "- Include citations using the [CITE:...] format.\n"
                 "- Explain your reasoning and show evidence from papers.\n"
-                "- It's fine to give long, detailed answers.\n"
+                "- Long, detailed answers are good when the user wants depth.\n"
             )
 
         return (

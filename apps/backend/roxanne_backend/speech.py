@@ -4,6 +4,7 @@ import io
 import json
 import logging
 import platform
+import re
 import ssl
 import subprocess
 import tempfile
@@ -19,6 +20,35 @@ from roxanne_backend.models import AppConfig
 from roxanne_backend.storage import AppPaths, restrict_permissions
 
 logger = logging.getLogger(__name__)
+
+
+def speech_plain_text(text: str) -> str:
+    """Strip common markdown/citation syntax before TTS."""
+    if not text:
+        return ""
+
+    cleaned = re.sub(r"\[CITE:[^\]]+\]", " ", text)
+    cleaned = re.sub(
+        r"```[\s\S]*?```",
+        lambda match: re.sub(r"```[a-zA-Z0-9_-]*\n?", " ", match.group(0)).replace("```", " "),
+        cleaned,
+    )
+    cleaned = re.sub(r"`([^`]+)`", r"\1", cleaned)
+    cleaned = re.sub(r"!\[([^\]]*)\]\([^)]+\)", r"\1", cleaned)
+    cleaned = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"\1", cleaned)
+    cleaned = re.sub(r"<[^>]+>", " ", cleaned)
+    cleaned = re.sub(r"^\s{0,3}#{1,6}\s+", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^\s{0,3}>\s?", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^\s*[-*+]\s+\[[ xX]\]\s*", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^\s*[-*+]\s+", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"^\s*\d+\.\s+", "", cleaned, flags=re.MULTILINE)
+    cleaned = re.sub(r"\$\$([^$]+)\$\$", r"\1", cleaned, flags=re.DOTALL)
+    cleaned = re.sub(r"\$([^$]+)\$", r"\1", cleaned)
+    cleaned = re.sub(r"\\([\[\](){}*_`#\-])", r"\1", cleaned)
+    cleaned = re.sub(r"(\*\*|__|~~|\*|_)", "", cleaned)
+    cleaned = cleaned.replace("|", " ")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned
 
 # ── Vosk STT model config ─────────────────────────────────────────
 _VOSK_MODELS = {
@@ -571,6 +601,10 @@ class SpeechService:
         )
 
     def synthesize(self, text: str, config: AppConfig) -> str:
+        text = speech_plain_text(text)
+        if not text:
+            raise RuntimeError("No speakable text after sanitization.")
+
         voice_model = self._resolve_voice_model(config)
 
         self.paths.ensure()

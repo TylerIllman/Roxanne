@@ -67,10 +67,10 @@ class ContentIndexer:
     def __init__(self, retrieval: RetrievalStore) -> None:
         self.retrieval = retrieval
 
-    def index_all(self, config: AppConfig) -> Dict[str, Dict[str, int]]:
+    def index_all(self, config: AppConfig, force: bool = False) -> Dict[str, Dict[str, int]]:
         return {
-            "papers": self.index_papers(config),
-            "notes": self.index_notes(config),
+            "papers": self.index_papers(config, force=force),
+            "notes": self.index_notes(config, force=force),
             "zotero_notes": self.index_zotero_notes(config),
         }
 
@@ -203,37 +203,80 @@ class ContentIndexer:
 
     # ─── PDF papers ─────────────────────────────────────────────────
 
-    def index_papers(self, config: AppConfig) -> Dict[str, int]:
+    def index_papers(self, config: AppConfig, force: bool = False) -> Dict[str, int]:
         if not config.zotero.storage_path:
-            return {"files_scanned": 0, "chunks_indexed": 0}
+            return {"files_scanned": 0, "chunks_indexed": 0, "indexed": 0, "skipped": 0}
 
         root = Path(config.zotero.storage_path).expanduser()
         if not root.exists():
-            return {"files_scanned": 0, "chunks_indexed": 0}
+            return {"files_scanned": 0, "chunks_indexed": 0, "indexed": 0, "skipped": 0}
 
-        # Build PDF→Zotero item map for metadata enrichment
+        manifest = self._get_manifest()
         item_map = self._build_zotero_map(config)
 
         total_chunks = 0
+        indexed = 0
+        skipped = 0
         pdf_files = sorted(root.rglob("*.pdf"))
         for pdf_path in pdf_files:
             zotero_meta = item_map.get(str(pdf_path.resolve()))
-            total_chunks += self._index_pdf(pdf_path, zotero_meta)
-        return {"files_scanned": len(pdf_files), "chunks_indexed": total_chunks}
+            paper_id = self._stable_id(pdf_path)
+            fp = _file_fingerprint(pdf_path) + "|" + _meta_fingerprint(zotero_meta)
+
+            if not force and not manifest.needs_index(paper_id, fp):
+                skipped += 1
+                continue
+
+            try:
+                total_chunks += self._index_pdf(pdf_path, zotero_meta)
+                manifest.mark_indexed(paper_id, fp)
+                indexed += 1
+            except Exception as exc:
+                logger.warning("Failed to index %s: %s", pdf_path.name, exc)
+
+        manifest.save()
+        return {
+            "files_scanned": len(pdf_files),
+            "chunks_indexed": total_chunks,
+            "indexed": indexed,
+            "skipped": skipped,
+        }
 
     # ─── Obsidian notes ─────────────────────────────────────────────
 
-    def index_notes(self, config: AppConfig) -> Dict[str, int]:
+    def index_notes(self, config: AppConfig, force: bool = False) -> Dict[str, int]:
+        manifest = self._get_manifest()
         files_scanned = 0
         chunks_indexed = 0
+        indexed = 0
+        skipped = 0
         for vault in config.obsidian_vaults:
             vault_root = Path(vault.path).expanduser()
             if not vault_root.exists():
                 continue
             for note_path in sorted(vault_root.rglob("*.md")):
                 files_scanned += 1
-                chunks_indexed += self.index_note_file(vault, note_path)
-        return {"files_scanned": files_scanned, "chunks_indexed": chunks_indexed}
+                note_id = self._stable_id(note_path)
+                fp = _file_fingerprint(note_path)
+
+                if not force and not manifest.needs_index(note_id, fp):
+                    skipped += 1
+                    continue
+
+                try:
+                    chunks_indexed += self.index_note_file(vault, note_path)
+                    manifest.mark_indexed(note_id, fp)
+                    indexed += 1
+                except Exception as exc:
+                    logger.warning("Failed to index note %s: %s", note_path.name, exc)
+
+        manifest.save()
+        return {
+            "files_scanned": files_scanned,
+            "chunks_indexed": chunks_indexed,
+            "indexed": indexed,
+            "skipped": skipped,
+        }
 
     def index_note_file(self, vault: VaultConfig, note_path: Path) -> int:
         note_id = self._stable_id(note_path)

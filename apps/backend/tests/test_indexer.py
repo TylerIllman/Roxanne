@@ -89,6 +89,40 @@ class TestPDFIndexing:
         result = indexer.index_papers(config)
         assert result["files_scanned"] == 0
 
+    def test_index_papers_skips_unchanged_files(self, indexer: ContentIndexer, zotero_storage: Path):
+        config = AppConfig(
+            anthropic=LLMConfig(provider="ollama", model="test"),
+            zotero=ZoteroConfig(storage_path=str(zotero_storage)),
+        )
+
+        with patch.object(indexer, "_build_zotero_map", return_value={}), patch.object(indexer, "_index_pdf", return_value=1) as mock_index:
+            first = indexer.index_papers(config)
+            second = indexer.index_papers(config)
+
+        assert first["files_scanned"] == 2
+        assert first["indexed"] == 2
+        assert first["skipped"] == 0
+        assert second["indexed"] == 0
+        assert second["skipped"] == 2
+        assert mock_index.call_count == 2
+
+    def test_index_notes_skips_unchanged_files(self, indexer: ContentIndexer, obsidian_vault: Path):
+        config = AppConfig(
+            anthropic=LLMConfig(provider="ollama", model="test"),
+            obsidian_vaults=[VaultConfig(name="Test", path=str(obsidian_vault))],
+        )
+
+        with patch.object(indexer, "index_note_file", return_value=1) as mock_index_note:
+            first = indexer.index_notes(config)
+            second = indexer.index_notes(config)
+
+        assert first["files_scanned"] == 3
+        assert first["indexed"] == 3
+        assert first["skipped"] == 0
+        assert second["indexed"] == 0
+        assert second["skipped"] == 3
+        assert mock_index_note.call_count == 3
+
     def test_index_papers_nonexistent_path(self, indexer: ContentIndexer):
         config = AppConfig(
             anthropic=LLMConfig(provider="ollama", model="test"),

@@ -30,6 +30,7 @@ class TestSystemPrompt:
         assert "Roxanne" in prompt
         assert "VOICE CONVERSATION MODE" in prompt
         assert "MAX 2-3 sentences" in prompt
+        assert "conversational" in prompt
         assert "TYPING MODE" not in prompt
 
     def test_citation_rules_in_typing(self, orchestrator: ChatOrchestrator):
@@ -39,7 +40,9 @@ class TestSystemPrompt:
 
     def test_no_cite_format_in_voice(self, orchestrator: ChatOrchestrator):
         prompt = orchestrator._system_prompt([], voice_mode=True)
-        assert "never [CITE" in prompt or "Verbal citations" in prompt
+        assert "[CITE:" in prompt
+        assert "lead author plus year" in prompt or "Smith 2023" in prompt
+        assert "ONLY structured markup allowed" in prompt
 
     def test_latex_instructions_in_typing(self, orchestrator: ChatOrchestrator):
         prompt = orchestrator._system_prompt([], voice_mode=False)
@@ -60,6 +63,27 @@ class TestSystemPrompt:
     def test_voice_narration_rules(self, orchestrator: ChatOrchestrator):
         prompt = orchestrator._system_prompt([], voice_mode=True)
         assert "Searching now" in prompt or "Let me check" in prompt or "3-6 words" in prompt
+
+    def test_voice_mode_avoids_metadata_dumps(self, orchestrator: ChatOrchestrator):
+        prompt = orchestrator._system_prompt([], voice_mode=True)
+        assert "Do not list long author rosters" in prompt
+
+    def test_voice_mode_requires_plain_text(self, orchestrator: ChatOrchestrator):
+        prompt = orchestrator._system_prompt([], voice_mode=True)
+        assert "Return plain text only" in prompt
+        assert "only allowed markup is [CITE:...]" in prompt
+        assert "Never output literal markdown markers" in prompt
+
+    def test_voice_mode_forbids_list_style_output(self, orchestrator: ChatOrchestrator):
+        prompt = orchestrator._system_prompt([], voice_mode=True)
+        assert "NO bullet points" in prompt
+        assert "NO numbered lists" in prompt
+        assert "rewrite it as a short spoken explanation" in prompt
+
+    def test_typing_mode_defaults_to_moderate_detail(self, orchestrator: ChatOrchestrator):
+        prompt = orchestrator._system_prompt([], voice_mode=False)
+        assert "moderate detail" in prompt
+        assert "explicitly asks for lots of detail" in prompt
 
 
 class TestEventEncoding:

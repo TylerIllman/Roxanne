@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from roxanne_backend.speech import SpeechService, _VOSK_MODELS, _VOICE_MODELS
+from roxanne_backend.speech import SpeechService, _VOSK_MODELS, _VOICE_MODELS, speech_plain_text
 from roxanne_backend.storage import AppPaths
 
 
@@ -101,3 +101,18 @@ class TestSpeechServiceProperties:
     def test_voice_config_path(self, speech_service: SpeechService):
         path = speech_service.voice_config_path
         assert path.name == "en_US-amy-medium.onnx.json"
+
+
+class TestSpeechSanitization:
+    def test_strips_common_markdown(self):
+        text = "# Title\n- **Bold** item with [link](https://example.com) and `code`"
+        cleaned = speech_plain_text(text)
+        assert cleaned == "Title Bold item with link and code"
+
+    def test_strips_citations_and_math(self):
+        text = "Answer [CITE:/tmp/test.pdf|2|quote] with $E = mc^2$ and $$a+b$$"
+        cleaned = speech_plain_text(text)
+        assert "[CITE:" not in cleaned
+        assert "$" not in cleaned
+        assert "E = mc^2" in cleaned
+        assert "a+b" in cleaned

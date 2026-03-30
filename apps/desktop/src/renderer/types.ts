@@ -105,8 +105,12 @@ export type PaperHit = {
   paper_id: string;
   title: string;
   file_path: string;
+  authors?: string;
+  year?: string;
   score?: number;
   chunk?: string;
+  page_start?: number;
+  page_end?: number;
 };
 
 export type NoteHit = {

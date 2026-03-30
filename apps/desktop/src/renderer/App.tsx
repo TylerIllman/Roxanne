@@ -47,11 +47,11 @@ import { Input } from "./components/ui/input";
 import { Label } from "./components/ui/label";
 import { Select } from "./components/ui/select";
 import { Separator } from "./components/ui/separator";
-import { Switch } from "./components/ui/switch";
 import { Textarea } from "./components/ui/textarea";
 import { cn } from "./lib/cn";
 import type {
   ChatMessage,
+  ConversationTurn,
   ConfigForm,
   IndexBrowseItem,
   IndexStats,
@@ -100,6 +100,10 @@ function makeId() {
 
 function blankVault(): VaultConfig {
   return { id: makeId(), name: "", path: "" };
+}
+
+function getLlmProviderLabel(provider: LLMProvider): string {
+  return provider === "anthropic" ? "Anthropic" : provider === "openai" ? "OpenAI" : "Ollama";
 }
 
 function publicToForm(config: PublicConfig): ConfigForm {
@@ -170,10 +174,14 @@ function appendStatusMessage(setter: Dispatch<SetStateAction<ChatMessage[]>>, co
 
 function mergePapers(current: PaperHit[], incoming: PaperHit[]) {
   const index = new Map<string, PaperHit>();
-  for (const item of current) index.set(item.paper_id, item);
+  for (const item of current) {
+    const key = item.paper_id || item.file_path;
+    if (key) index.set(key, item);
+  }
   for (const item of incoming) {
-    if (!item.paper_id) continue;
-    index.set(item.paper_id, { ...index.get(item.paper_id), ...item });
+    const key = item.paper_id || item.file_path;
+    if (!key) continue;
+    index.set(key, { ...index.get(key), ...item });
   }
   return Array.from(index.values());
 }
@@ -490,7 +498,7 @@ function PiperSetupPanel({ baseUrl, onDone }: { baseUrl: string; onDone: () => v
 /*  Small UI primitives                                                */
 /* ------------------------------------------------------------------ */
 
-function Field({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: ReactNode }) {
+function Field({ label, hint, htmlFor, children }: { label: ReactNode; hint?: string; htmlFor?: string; children: ReactNode }) {
   return (
     <div className="flex flex-col gap-1">
       <Label htmlFor={htmlFor}>{label}</Label>
@@ -705,6 +713,67 @@ function CitationChip({ citation }: { citation: ParsedCitation }) {
       )}
     </span>
   );
+}
+
+function toSpeechPlainText(text: string) {
+  return text
+    .replace(/\[CITE:[^\]]+\]/g, " ")
+    .replace(/```[\s\S]*?```/g, (block) => block.replace(/```[a-zA-Z0-9_-]*\n?/g, " ").replace(/```/g, " "))
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s{0,3}>\s?/gm, "")
+    .replace(/^\s*[-*+]\s+\[[ xX]\]\s*/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+\.\s+/gm, "")
+    .replace(/\$\$([^$]+)\$\$/gs, "$1")
+    .replace(/\$([^$]+)\$/g, "$1")
+    .replace(/\\([\[\](){}*_`#\-])/g, "$1")
+    .replace(/(\*\*|__|~~|\*|_)/g, "")
+    .replace(/\|/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function stripStreamingCitations(text: string, finalize = false) {
+  const citePrefix = "[CITE:";
+  let clean = "";
+  let i = 0;
+
+  while (i < text.length) {
+    const remaining = text.slice(i);
+    const remainingUpper = remaining.toUpperCase();
+
+    if (remainingUpper.startsWith(citePrefix)) {
+      const end = text.indexOf("]", i + citePrefix.length);
+      if (end === -1) {
+        return { clean, carry: finalize ? "" : text.slice(i) };
+      }
+      clean += " ";
+      i = end + 1;
+      continue;
+    }
+
+    if (!finalize && remaining[0] === "[" && citePrefix.startsWith(remainingUpper)) {
+      return { clean, carry: text.slice(i) };
+    }
+
+    clean += text[i];
+    i += 1;
+  }
+
+  return { clean, carry: "" };
+}
+
+function buildConversationHistory(chatMessages: ChatMessage[]): ConversationTurn[] {
+  return chatMessages
+    .filter((message) => (message.role === "user" || message.role === "assistant") && message.content.trim())
+    .map((message) => ({
+      role: message.role as "user" | "assistant",
+      content: message.content,
+    }));
 }
 
 /** Card for search_zotero results */
@@ -1505,10 +1574,10 @@ function ReadyStep({ onFinish, finishing }: { onFinish: () => void; finishing: b
       </div>
       <h1 className="text-2xl font-bold tracking-tight text-zinc-900">You're all set</h1>
       <p className="text-sm leading-relaxed text-zinc-500 max-w-[420px]">
-        Roxanne will save your settings and build the local search index. This may take a moment on first run.
+        Roxanne will save your settings and open the app right away. Your local search index can finish building in the background.
       </p>
       <Button className="mt-2 min-w-[200px]" onClick={onFinish} disabled={finishing}>
-        {finishing ? "Setting up..." : "Save & build index"}
+        {finishing ? "Opening Roxanne..." : "Save & open Roxanne"}
       </Button>
     </div>
   );
@@ -2271,6 +2340,24 @@ function SettingsPanel({ configForm, setConfigForm, savedConfig, saving, onClose
   baseUrl: string;
 }) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("models");
+  const llmProvider = configForm.anthropic.provider;
+  const llmProviderLabel = getLlmProviderLabel(llmProvider);
+  const savedLlmProvider = savedConfig?.anthropic.provider ?? null;
+  const savedLlmProviderLabel = savedLlmProvider ? getLlmProviderLabel(savedLlmProvider) : null;
+  const hasSavedLlmKey = Boolean(savedConfig?.anthropic.api_key);
+  const hasMatchingSavedLlmKey = hasSavedLlmKey && savedLlmProvider === llmProvider;
+  const hasDraftLlmKey = configForm.anthropic.api_key.trim().length > 0;
+
+  let llmKeyHint = `Paste your ${llmProviderLabel} API key.`;
+  if (hasMatchingSavedLlmKey) {
+    llmKeyHint = hasDraftLlmKey
+      ? `A ${llmProviderLabel} API key is already saved. Saving now will replace it with the new key you entered.`
+      : `A ${llmProviderLabel} API key is already saved. Leave this blank to keep using it.`;
+  } else if (hasSavedLlmKey && savedLlmProviderLabel) {
+    llmKeyHint = hasDraftLlmKey
+      ? `A ${savedLlmProviderLabel} API key is saved right now. Saving now will replace it with this ${llmProviderLabel} key.`
+      : `A ${savedLlmProviderLabel} API key is saved right now. Paste a ${llmProviderLabel} key here if you want to switch providers.`;
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white">
@@ -2327,8 +2414,32 @@ function SettingsPanel({ configForm, setConfigForm, savedConfig, saving, onClose
                 </Select>
               </Field>
               {configForm.anthropic.provider !== "ollama" && (
-                <Field label="API key" hint="Leave blank to keep saved key.">
-                  <Input type="password" placeholder={savedConfig?.anthropic.api_key ? "••••••••" : configForm.anthropic.provider === "anthropic" ? "sk-ant-..." : "sk-..."} value={configForm.anthropic.api_key} onChange={(e) => setConfigForm((c) => ({ ...c, anthropic: { ...c.anthropic, api_key: e.target.value } }))} />
+                <Field
+                  label={(
+                    <span className="inline-flex flex-wrap items-center gap-2">
+                      <span>API key</span>
+                      {hasSavedLlmKey && savedLlmProviderLabel && (
+                        <span
+                          className={cn(
+                            "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold",
+                            hasMatchingSavedLlmKey ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                          )}
+                        >
+                          Saved for {savedLlmProviderLabel}
+                        </span>
+                      )}
+                    </span>
+                  )}
+                  htmlFor="settings-api-key"
+                  hint={llmKeyHint}
+                >
+                  <Input
+                    id="settings-api-key"
+                    type="password"
+                    placeholder={hasMatchingSavedLlmKey ? "Saved API key on file" : configForm.anthropic.provider === "anthropic" ? "sk-ant-..." : "sk-..."}
+                    value={configForm.anthropic.api_key}
+                    onChange={(e) => setConfigForm((c) => ({ ...c, anthropic: { ...c.anthropic, api_key: e.target.value } }))}
+                  />
                 </Field>
               )}
               <Field label="Model">
@@ -2433,7 +2544,17 @@ export function App() {
   const [baseUrl, setBaseUrl] = useState("");
   const [savedConfig, setSavedConfig] = useState<PublicConfig | null>(null);
   const [configForm, setConfigForm] = useState<ConfigForm>({ ...EMPTY_CONFIG, obsidian_vaults: [blankVault()] });
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessagesState] = useState<ChatMessage[]>([]);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const setMessages = useCallback((updater: SetStateAction<ChatMessage[]>) => {
+    setMessagesState((current) => {
+      const next = typeof updater === "function"
+        ? (updater as (value: ChatMessage[]) => ChatMessage[])(current)
+        : updater;
+      messagesRef.current = next;
+      return next;
+    });
+  }, []);
   const [papers, setPapers] = useState<PaperHit[]>([]);
   const [notes, setNotes] = useState<NoteHit[]>([]);
   const [draft, setDraft] = useState("");
@@ -2445,7 +2566,6 @@ export function App() {
   const [isRecording, setIsRecording] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [autoSpeak, setAutoSpeak] = useState(false);
   const [wizardStep, setWizardStep] = useState<WizardStep>(0);
   const [finishing, setFinishing] = useState(false);
   const [showPanel, setShowPanel] = useState<"" | "settings" | "index">("");
@@ -2490,7 +2610,25 @@ export function App() {
   const recordingChunksRef = useRef<Blob[]>([]);
   const sessionIdRef = useRef(makeId());
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const isSendingRef = useRef(false);
+  const isSpeakingRef = useRef(false);
+  const voiceInputPausedRef = useRef(false);
+  const voiceAwaitingResponseRef = useRef(false);
+  const voiceCommandBufferRef = useRef("");
+  const ttsStreamStartedRef = useRef(false);
+  const notificationAudioContextRef = useRef<AudioContext | null>(null);
+  const ttsPlaybackContextRef = useRef<AudioContext | null>(null);
+  const ttsSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const ttsGainRef = useRef<GainNode | null>(null);
+  const ttsPlaybackGenerationRef = useRef(0);
+
+  useEffect(() => {
+    isSendingRef.current = isSending;
+  }, [isSending]);
+
+  useEffect(() => {
+    isSpeakingRef.current = isSpeaking;
+  }, [isSpeaking]);
 
   /* ---- Bootstrap ---- */
 
@@ -2533,6 +2671,14 @@ export function App() {
       if (voiceAnimFrameRef.current) cancelAnimationFrame(voiceAnimFrameRef.current);
       if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop();
       mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
+      if (notificationAudioContextRef.current) {
+        void notificationAudioContextRef.current.close();
+        notificationAudioContextRef.current = null;
+      }
+      if (ttsPlaybackContextRef.current) {
+        void ttsPlaybackContextRef.current.close();
+        ttsPlaybackContextRef.current = null;
+      }
     };
   }, []);
 
@@ -2585,9 +2731,11 @@ export function App() {
       const nextConfig = await saveConfig(baseUrl, sanitizeConfig(configForm));
       setSavedConfig(nextConfig);
       setConfigForm(publicToForm(nextConfig));
-      await runIndex(baseUrl, "all");
-      addToast("success", "Setup complete", "Your index has been built.");
       setShowSetup(false);
+      addToast("success", "Setup complete", "Roxanne is ready. Indexing will continue in the background.");
+      window.setTimeout(() => {
+        void triggerIndex("all");
+      }, 0);
     } catch (error) {
       addToast("error", "Setup error", error instanceof Error ? error.message : String(error));
     } finally {
@@ -2722,9 +2870,97 @@ export function App() {
     }
   }
 
+  function clearVoiceSendTimer() {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+  }
+
+  async function playVoiceCue(kind: "sent" | "listening") {
+    try {
+      type WindowWithWebkitAudio = Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext };
+      const AudioContextCtor = window.AudioContext || (window as WindowWithWebkitAudio).webkitAudioContext;
+      if (!AudioContextCtor) return;
+
+      if (!notificationAudioContextRef.current) {
+        notificationAudioContextRef.current = new AudioContextCtor();
+      }
+
+      const audioCtx = notificationAudioContextRef.current;
+      if (audioCtx.state === "suspended") {
+        await audioCtx.resume();
+      }
+
+      const startAt = audioCtx.currentTime + 0.01;
+      const notes = kind === "sent"
+        ? [
+            { frequency: 880, duration: 0.05, delay: 0 },
+            { frequency: 1244, duration: 0.08, delay: 0.05 },
+          ]
+        : [
+            { frequency: 659, duration: 0.05, delay: 0 },
+            { frequency: 988, duration: 0.09, delay: 0.055 },
+          ];
+
+      for (const note of notes) {
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.value = note.frequency;
+        gainNode.gain.setValueAtTime(0.0001, startAt + note.delay);
+        gainNode.gain.exponentialRampToValueAtTime(0.06, startAt + note.delay + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.0001, startAt + note.delay + note.duration);
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        oscillator.start(startAt + note.delay);
+        oscillator.stop(startAt + note.delay + note.duration);
+      }
+    } catch {
+      // Notification sounds are best-effort only.
+    }
+  }
+
+  function resetVoiceRecognizer() {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send("RESET");
+    }
+  }
+
+  function resumeVoiceListening(playCue = false, mode: "wake" | "direct" = "wake") {
+    if (!voiceModeRef.current) return;
+    clearVoiceSendTimer();
+    voiceInputPausedRef.current = false;
+    voiceCommandBufferRef.current = "";
+    setLiveTranscript("");
+    voiceStateRef.current = mode === "direct" ? "active" : "listening";
+    setVoiceState(mode === "direct" ? "active" : "listening");
+    resetVoiceRecognizer();
+    if (playCue) {
+      void playVoiceCue("listening");
+    }
+  }
+
+  function pauseVoiceListening() {
+    clearVoiceSendTimer();
+    voiceInputPausedRef.current = true;
+    voiceCommandBufferRef.current = "";
+    setLiveTranscript("");
+    voiceStateRef.current = "listening";
+    setVoiceState("listening");
+    resetVoiceRecognizer();
+  }
+
+  function finishVoiceTurnIfReady() {
+    if (!voiceModeRef.current || !voiceAwaitingResponseRef.current) return;
+    if (isSendingRef.current || ttsPlayingRef.current || ttsQueueRef.current.length > 0) return;
+    voiceAwaitingResponseRef.current = false;
+    resumeVoiceListening(true, "direct");
+  }
+
   /* ---- Chat ---- */
 
-  async function handleSend(overrideText?: string) {
+  async function handleSend(overrideText?: string, origin: "text" | "stt" = "text") {
     const prompt = (overrideText ?? draft).trim();
     if (!prompt || !baseUrl) return;
     // In voice mode, allow concurrent sends (don't block on isSending)
@@ -2734,9 +2970,17 @@ export function App() {
     // Reset TTS state for new message
     ttsCancelledRef.current = false;
     ttsQueueRef.current = [];
-    ttsSentenceBufferRef.current = "";
+    ttsChunkBufferRef.current = "";
+    ttsCitationCarryRef.current = "";
+    ttsStreamStartedRef.current = false;
     if (!overrideText) setDraft("");
     setIsSending(true);
+
+    if (origin === "stt") {
+      voiceAwaitingResponseRef.current = true;
+      pauseVoiceListening();
+      void playVoiceCue("sent");
+    }
 
     // Auto-create a conversation if there isn't one active
     let convId = activeConvIdRef.current;
@@ -2748,10 +2992,7 @@ export function App() {
       } catch {}
     }
 
-    // Build conversation history from existing messages (user + assistant only, with content)
-    const history = messages
-      .filter((m) => (m.role === "user" || m.role === "assistant") && m.content.trim())
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content }));
+    const history = buildConversationHistory(messagesRef.current);
 
     setMessages((c) => [...c, { id: makeId(), role: "user", content: prompt }, { id: assistantMessageId, role: "assistant", content: "" }]);
 
@@ -2780,14 +3021,15 @@ export function App() {
       appendStatusMessage(setMessages, `Error: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       setIsSending(false);
+      finishVoiceTurnIfReady();
     }
   }
 
   async function handleStreamEvent(event: StreamEvent, assistantMessageId: string) {
     if (event.type === "assistant_delta") {
       setMessages((c) => c.map((m) => (m.id === assistantMessageId ? { ...m, content: `${m.content}${event.delta || ""}` } : m)));
-      // Stream text to TTS sentence-by-sentence as it arrives
-      if (autoSpeak && event.delta) {
+      if (voiceModeRef.current && event.delta) {
+        ttsStreamStartedRef.current = true;
         feedTTSDelta(event.delta);
       }
       return;
@@ -2796,17 +3038,20 @@ export function App() {
       const payload = (event.payload || {}) as { message?: string };
       if (payload.message) {
         setMessages((c) => c.map((m) => (m.id === assistantMessageId ? { ...m, content: payload.message || "" } : m)));
-        // Flush any remaining text in the TTS buffer
-        if (autoSpeak) {
+        if (voiceModeRef.current) {
+          if (!ttsStreamStartedRef.current) {
+            feedTTSDelta(payload.message);
+          }
           flushTTSBuffer();
         }
       }
+      finishVoiceTurnIfReady();
       return;
     }
     if (event.type === "status") {
       appendStatusMessage(setMessages, event.message || "Running tool...");
       // Speak tool status in voice mode (only if the LLM didn't already narrate)
-      if (autoSpeak && event.tool && !ttsPlayingRef.current && ttsQueueRef.current.length === 0) {
+      if (voiceModeRef.current && event.tool && !ttsPlayingRef.current && ttsQueueRef.current.length === 0) {
         const toolSpeech: Record<string, string> = {
           search_zotero: "Searching now.",
           search_zotero_metadata: "Looking that up.",
@@ -2827,7 +3072,7 @@ export function App() {
       return;
     }
     if (event.type === "tool_result") {
-      applyToolPayload(event);
+      applyToolPayload(event, assistantMessageId);
       return;
     }
     if (event.type === "error") {
@@ -2844,7 +3089,7 @@ export function App() {
     }
   }
 
-  function applyToolPayload(event: StreamEvent) {
+  function applyToolPayload(event: StreamEvent, assistantMessageId: string) {
     const showableTools = ["search_zotero", "search_zotero_metadata", "retrieve_paper_chunks", "get_paper_notes", "get_paper_annotations"];
     if (event.tool && showableTools.includes(event.tool)) {
       // Insert a tool card into the chat
@@ -2883,83 +3128,83 @@ export function App() {
     }
   }
 
-  /* ---- Speech (streaming sentence queue) ---- */
+  /* ---- Speech (streaming chunk queue) ---- */
 
   const piperCheckedRef = useRef(false);
   const ttsQueueRef = useRef<string[]>([]);
   const ttsPlayingRef = useRef(false);
   const ttsCancelledRef = useRef(false);
-  // Buffer for accumulating text and splitting into sentences
-  const ttsSentenceBufferRef = useRef("");
+  const ttsChunkBufferRef = useRef("");
+  const ttsCitationCarryRef = useRef("");
 
-  /** Add a sentence to the TTS queue and start draining if not already playing */
-  function enqueueTTS(sentence: string) {
-    if (!sentence.trim() || ttsCancelledRef.current) return;
-    ttsQueueRef.current.push(sentence.trim());
+  function enqueueTTS(chunk: string) {
+    const cleaned = toSpeechPlainText(chunk);
+    if (!cleaned || ttsCancelledRef.current) return;
+    ttsQueueRef.current.push(cleaned);
     if (!ttsPlayingRef.current) {
       void drainTTSQueue();
     }
   }
 
-  /** Drain the TTS queue, playing one sentence at a time */
-  async function drainTTSQueue() {
-    if (!baseUrl || ttsPlayingRef.current) return;
-    ttsPlayingRef.current = true;
-    setIsSpeaking(true);
+  function countWords(text: string) {
+    return text.match(/\S+/g)?.length ?? 0;
+  }
 
-    while (ttsQueueRef.current.length > 0 && !ttsCancelledRef.current) {
-      const sentence = ttsQueueRef.current.shift()!;
-      try {
-        const audioUrl = await synthesizeSpeech(baseUrl, sentence);
-        if (ttsCancelledRef.current) break;
-        await new Promise<void>((resolve, reject) => {
-          const audio = new Audio(audioUrl);
-          audioRef.current = audio;
-          audio.onended = () => resolve();
-          audio.onerror = () => reject(new Error("Audio playback error"));
-          audio.play().catch(reject);
-        });
-      } catch (error) {
-        if (!ttsCancelledRef.current) {
-          addToast("error", "TTS error", error instanceof Error ? error.message : String(error));
+  function takeWordChunk(text: string, words: number) {
+    const tokens = Array.from(text.matchAll(/\S+\s*/g));
+    if (tokens.length < words) return null;
+    const consumed = tokens.slice(0, words).reduce((total, token) => total + token[0].length, 0);
+    return {
+      chunk: text.slice(0, consumed).trim(),
+      rest: text.slice(consumed).trimStart(),
+    };
+  }
+
+  function pumpTTSBuffer(force = false) {
+    let buffer = ttsChunkBufferRef.current.trimStart();
+
+    while (buffer) {
+      const punctMatch = buffer.match(/^([\s\S]{32,}?[,:;.!?])(?=\s|$)/);
+      if (punctMatch) {
+        enqueueTTS(punctMatch[1]);
+        buffer = buffer.slice(punctMatch[1].length).trimStart();
+        continue;
+      }
+
+      const wordCount = countWords(buffer);
+      if (!force && wordCount < 12 && buffer.length < 72) break;
+
+      if (force && wordCount <= 14) {
+        enqueueTTS(buffer);
+        buffer = "";
+        break;
+      }
+
+      const targetWords = wordCount >= 22 ? 15 : wordCount >= 16 ? 12 : force ? Math.max(wordCount, 1) : 0;
+      if (!targetWords) break;
+
+      const next = takeWordChunk(buffer, Math.min(targetWords, wordCount));
+      if (!next) {
+        if (force) {
+          enqueueTTS(buffer);
+          buffer = "";
         }
+        break;
+      }
+
+      enqueueTTS(next.chunk);
+      buffer = next.rest;
+
+      if (!force && countWords(buffer) < 5 && buffer.length < 30) {
         break;
       }
     }
 
-    ttsPlayingRef.current = false;
-    ttsQueueRef.current = [];
-    setIsSpeaking(false);
+    ttsChunkBufferRef.current = buffer;
   }
 
-  /** Feed a text delta from the stream — splits into sentences and enqueues complete ones */
-  function feedTTSDelta(delta: string) {
-    ttsSentenceBufferRef.current += delta;
-    // Split on sentence boundaries: . ! ? followed by space or end
-    const parts = ttsSentenceBufferRef.current.split(/(?<=[.!?])\s+/);
-    // All parts except the last are complete sentences
-    for (let i = 0; i < parts.length - 1; i++) {
-      const sentence = parts[i].trim();
-      if (sentence.length > 5) { // Don't TTS tiny fragments
-        enqueueTTS(sentence);
-      }
-    }
-    // Keep the last (possibly incomplete) part in the buffer
-    ttsSentenceBufferRef.current = parts[parts.length - 1] || "";
-  }
-
-  /** Flush any remaining text in the buffer as a final sentence */
-  function flushTTSBuffer() {
-    const remaining = ttsSentenceBufferRef.current.trim();
-    ttsSentenceBufferRef.current = "";
-    if (remaining.length > 5) {
-      enqueueTTS(remaining);
-    }
-  }
-
-  /** Check piper is installed, then speak a full text (non-streaming fallback) */
-  async function speakText(text: string) {
-    if (!baseUrl || !text.trim()) return;
+  async function ensureSpeechReady() {
+    if (!baseUrl) return false;
     if (!piperCheckedRef.current) {
       piperCheckedRef.current = true;
       try {
@@ -2967,27 +3212,186 @@ export function App() {
         if (!speechSt.piper_installed || !speechSt.voice_installed) {
           piperCheckedRef.current = false;
           triggerSetup("piper");
-          return;
+          return false;
         }
-      } catch {}
+      } catch {
+        piperCheckedRef.current = false;
+        return false;
+      }
     }
-    // Use the queue approach for consistency
+    return true;
+  }
+
+  async function getTTSPlaybackContext() {
+    if (!ttsPlaybackContextRef.current) {
+      ttsPlaybackContextRef.current = new AudioContext();
+    }
+    if (ttsPlaybackContextRef.current.state === "suspended") {
+      await ttsPlaybackContextRef.current.resume();
+    }
+    return ttsPlaybackContextRef.current;
+  }
+
+  async function synthesizeSpeechBuffer(chunk: string) {
+    if (!baseUrl) throw new Error("Backend not ready.");
+    const audioUrl = await synthesizeSpeech(baseUrl, chunk);
+    if (ttsCancelledRef.current) throw new Error("TTS cancelled");
+
+    const response = await fetch(audioUrl);
+    if (!response.ok) {
+      throw new Error(`Audio fetch failed (${response.status})`);
+    }
+
+    const audioData = await response.arrayBuffer();
+    if (ttsCancelledRef.current) throw new Error("TTS cancelled");
+
+    const audioCtx = await getTTSPlaybackContext();
+    return await audioCtx.decodeAudioData(audioData.slice(0));
+  }
+
+  async function playAudioBuffer(buffer: AudioBuffer) {
+    const audioCtx = await getTTSPlaybackContext();
+    const generation = ttsPlaybackGenerationRef.current;
+
+    await new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const source = audioCtx.createBufferSource();
+      const gainNode = audioCtx.createGain();
+      const startAt = audioCtx.currentTime + 0.005;
+      const fadeInEnd = startAt + Math.min(0.012, Math.max(buffer.duration / 6, 0.006));
+      const fadeOutStart = Math.max(fadeInEnd, startAt + buffer.duration - 0.02);
+      const stopAt = Math.max(fadeOutStart + 0.015, startAt + buffer.duration);
+
+      source.buffer = buffer;
+      source.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+
+      gainNode.gain.setValueAtTime(0.0001, startAt);
+      gainNode.gain.exponentialRampToValueAtTime(1, fadeInEnd);
+      gainNode.gain.setValueAtTime(1, fadeOutStart);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, stopAt);
+
+      const cleanup = () => {
+        if (ttsSourceRef.current === source) ttsSourceRef.current = null;
+        if (ttsGainRef.current === gainNode) ttsGainRef.current = null;
+        source.disconnect();
+        gainNode.disconnect();
+      };
+
+      source.onended = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+
+      try {
+        ttsSourceRef.current = source;
+        ttsGainRef.current = gainNode;
+        source.start(startAt);
+      } catch (error) {
+        settled = true;
+        cleanup();
+        reject(error instanceof Error ? error : new Error(String(error)));
+        return;
+      }
+
+      if (generation !== ttsPlaybackGenerationRef.current) {
+        settled = true;
+        cleanup();
+        resolve();
+      }
+    });
+  }
+
+  async function drainTTSQueue() {
+    if (!baseUrl || ttsPlayingRef.current) return;
+    const speechReady = await ensureSpeechReady();
+    if (!speechReady) {
+      finishVoiceTurnIfReady();
+      return;
+    }
+
+    ttsPlayingRef.current = true;
+    setIsSpeaking(true);
+
+    try {
+      while (ttsQueueRef.current.length > 0 && !ttsCancelledRef.current) {
+        let currentChunk = ttsQueueRef.current.shift();
+        if (!currentChunk) break;
+
+        let currentBufferPromise: Promise<AudioBuffer> | null = synthesizeSpeechBuffer(currentChunk);
+
+        while (currentBufferPromise && !ttsCancelledRef.current) {
+          const currentBuffer = await currentBufferPromise;
+          if (ttsCancelledRef.current) break;
+
+          const nextChunk = ttsQueueRef.current.shift() || null;
+          const nextBufferPromise = nextChunk ? synthesizeSpeechBuffer(nextChunk) : null;
+
+          await playAudioBuffer(currentBuffer);
+          currentBufferPromise = nextBufferPromise;
+        }
+      }
+    } catch (error) {
+      if (!ttsCancelledRef.current) {
+        addToast("error", "TTS error", error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    ttsPlayingRef.current = false;
+    ttsQueueRef.current = [];
+    setIsSpeaking(false);
+    finishVoiceTurnIfReady();
+  }
+
+  function feedTTSDelta(delta: string) {
+    const streamed = stripStreamingCitations(`${ttsCitationCarryRef.current}${delta}`);
+    ttsCitationCarryRef.current = streamed.carry;
+    ttsChunkBufferRef.current += streamed.clean;
+    pumpTTSBuffer(false);
+  }
+
+  function flushTTSBuffer() {
+    if (ttsCitationCarryRef.current) {
+      const streamed = stripStreamingCitations(ttsCitationCarryRef.current, true);
+      ttsChunkBufferRef.current += streamed.clean;
+      ttsCitationCarryRef.current = "";
+    }
+    pumpTTSBuffer(true);
+  }
+
+  async function speakText(text: string) {
+    if (!text.trim()) return;
+    if (!(await ensureSpeechReady())) return;
     ttsCancelledRef.current = false;
-    const sentences = text.split(/(?<=[.!?])\s+/).filter((s) => s.trim().length > 5);
-    if (sentences.length === 0) sentences.push(text);
-    for (const s of sentences) enqueueTTS(s);
+    const streamed = stripStreamingCitations(text.trim(), true);
+    ttsCitationCarryRef.current = "";
+    ttsChunkBufferRef.current = streamed.clean.trim();
+    flushTTSBuffer();
   }
 
   function stopSpeaking() {
     ttsCancelledRef.current = true;
+    ttsPlaybackGenerationRef.current += 1;
     ttsQueueRef.current = [];
-    ttsSentenceBufferRef.current = "";
-    if (audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current = null;
+    ttsChunkBufferRef.current = "";
+    ttsCitationCarryRef.current = "";
+    if (ttsSourceRef.current) {
+      try {
+        ttsSourceRef.current.stop();
+      } catch {}
+      ttsSourceRef.current = null;
+    }
+    if (ttsGainRef.current) {
+      try {
+        ttsGainRef.current.disconnect();
+      } catch {}
+      ttsGainRef.current = null;
     }
     ttsPlayingRef.current = false;
     setIsSpeaking(false);
+    finishVoiceTurnIfReady();
   }
 
   async function toggleRecording() {
@@ -3053,10 +3457,13 @@ export function App() {
     } catch {}
 
     voiceModeRef.current = true;
+    voiceAwaitingResponseRef.current = false;
+    voiceInputPausedRef.current = false;
+    voiceCommandBufferRef.current = "";
     setVoiceMode(true);
-    setAutoSpeak(true); // Voice mode = always speak responses
     voiceStateRef.current = "listening";
     setVoiceState("listening");
+    setLiveTranscript("");
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -3092,12 +3499,11 @@ export function App() {
         // Send config
         ws.send(JSON.stringify({ sample_rate: audioCtx.sampleRate }));
         setIsRecording(true);
+        resumeVoiceListening(false);
       };
 
       // Wake-word detection + command accumulation
       const WAKE_WORDS = ["roxanne", "hey roxanne", "ok roxanne", "okay roxanne"];
-      let accumulatedText = "";
-      let sendTimer: ReturnType<typeof setTimeout> | null = null;
 
       /** Check if text contains a wake word, return text after the wake word */
       function extractAfterWakeWord(text: string): string | null {
@@ -3111,26 +3517,58 @@ export function App() {
         return null;
       }
 
+      function queueVoiceSend(timeoutMs: number) {
+        clearVoiceSendTimer();
+        silenceTimerRef.current = setTimeout(() => {
+          const trimmed = voiceCommandBufferRef.current.trim();
+          if (!trimmed || !voiceModeRef.current) {
+            resumeVoiceListening(false);
+            return;
+          }
+
+          setLiveTranscript("");
+          setIsTranscribing(false);
+          void handleSend(trimmed, "stt");
+        }, timeoutMs);
+      }
+
+      function activateVoiceListening(previewText = "") {
+        clearVoiceSendTimer();
+        voiceStateRef.current = "active";
+        setVoiceState("active");
+        setLiveTranscript(previewText || "Listening…");
+      }
+
+      function queueWakeWordGracePeriod() {
+        clearVoiceSendTimer();
+        silenceTimerRef.current = setTimeout(() => {
+          if (!voiceCommandBufferRef.current.trim()) {
+            resumeVoiceListening(false);
+          }
+        }, 5000);
+      }
+
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          if (voiceInputPausedRef.current && data.type !== "error") {
+            return;
+          }
           const currentState = voiceStateRef.current;
 
           if (data.type === "interim") {
             const partial = (data.text || "").trim();
             if (currentState === "listening") {
-              // In listening mode, show a subtle hint if wake word is partially detected
-              const lower = partial.toLowerCase();
-              const hasWake = WAKE_WORDS.some((ww) => lower.includes(ww));
-              if (hasWake) {
-                const after = extractAfterWakeWord(partial);
-                setLiveTranscript(after || "…");
+              const afterWake = extractAfterWakeWord(partial);
+              if (afterWake !== null) {
+                activateVoiceListening(afterWake);
               } else {
-                setLiveTranscript(""); // Don't show passive transcription
+                setLiveTranscript("");
               }
             } else {
-              // Active mode — show full transcription
-              setLiveTranscript((accumulatedText + " " + partial).trim());
+              const partialText = extractAfterWakeWord(partial) ?? partial;
+              const transcript = [voiceCommandBufferRef.current, partialText].filter(Boolean).join(" ").trim();
+              setLiveTranscript(transcript || "Listening…");
             }
           } else if (data.type === "final") {
             const text = (data.text || "").trim();
@@ -3138,79 +3576,35 @@ export function App() {
 
             // Always check for HALT to exit voice mode
             if (text.toLowerCase().replace(/[^a-z]/g, "") === "halt" || text.toLowerCase().replace(/[^a-z]/g, "") === "stop") {
-              if (sendTimer) clearTimeout(sendTimer);
+              clearVoiceSendTimer();
               setLiveTranscript("");
-              accumulatedText = "";
+              voiceCommandBufferRef.current = "";
               stopVoiceConversation();
               return;
             }
 
             if (currentState === "listening") {
-              // Check if this phrase contains the wake word
               const afterWake = extractAfterWakeWord(text);
               if (afterWake !== null) {
-                // Activate! Transition to active state
-                voiceStateRef.current = "active";
-                setVoiceState("active");
-                accumulatedText = afterWake;
-                setLiveTranscript(afterWake || "Listening…");
+                activateVoiceListening(afterWake);
+                voiceCommandBufferRef.current = afterWake;
 
-                // If there's already text after the wake word, start the send timer
                 if (afterWake) {
-                  if (sendTimer) clearTimeout(sendTimer);
-                  sendTimer = setTimeout(() => {
-                    const trimmed = accumulatedText.trim();
-                    if (!trimmed || !voiceModeRef.current) {
-                      // Nothing said after wake word — go back to listening
-                      voiceStateRef.current = "listening";
-                      setVoiceState("listening");
-                      setLiveTranscript("");
-                      accumulatedText = "";
-                      return;
-                    }
-                    setLiveTranscript("");
-                    setIsTranscribing(false);
-                    handleSend(trimmed);
-                    accumulatedText = "";
-                    // Return to listening state for next wake word
-                    voiceStateRef.current = "listening";
-                    setVoiceState("listening");
-                    if (ws.readyState === WebSocket.OPEN) ws.send("RESET");
-                  }, 1500);
+                  queueVoiceSend(3000);
                 } else {
-                  // Wake word only, no command yet — wait for more speech
-                  if (sendTimer) clearTimeout(sendTimer);
-                  sendTimer = setTimeout(() => {
-                    // Timeout with no command — go back to listening
-                    if (!accumulatedText.trim()) {
-                      voiceStateRef.current = "listening";
-                      setVoiceState("listening");
-                      setLiveTranscript("");
-                      accumulatedText = "";
-                    }
-                  }, 5000); // 5s grace period after just wake word
+                  queueWakeWordGracePeriod();
                 }
               }
-              // No wake word → ignore (passive listening)
             } else {
-              // Active state — accumulate command text
-              accumulatedText = (accumulatedText + " " + text).trim();
-              setLiveTranscript(accumulatedText);
-
-              if (sendTimer) clearTimeout(sendTimer);
-              sendTimer = setTimeout(() => {
-                const trimmed = accumulatedText.trim();
-                if (!trimmed || !voiceModeRef.current) return;
-
-                setLiveTranscript("");
-                setIsTranscribing(false);
-                handleSend(trimmed);
-                accumulatedText = "";
-                // Return to listening state
-                voiceStateRef.current = "listening";
-                setVoiceState("listening");
-                if (ws.readyState === WebSocket.OPEN) ws.send("RESET");
-              }, 1500);
+              const segment = extractAfterWakeWord(text) ?? text;
+              if (segment) {
+                voiceCommandBufferRef.current = [voiceCommandBufferRef.current, segment].filter(Boolean).join(" ").trim();
+                setLiveTranscript(voiceCommandBufferRef.current);
+                queueVoiceSend(3000);
+              } else if (!voiceCommandBufferRef.current.trim()) {
+                setLiveTranscript("Listening…");
+                queueWakeWordGracePeriod();
+              }
             }
           } else if (data.type === "error") {
             addToast("error", "Transcription error", data.text || "Unknown error");
@@ -3235,12 +3629,14 @@ export function App() {
 
       // Send audio chunks to Vosk — it handles speech detection internally
       scriptNode.onaudioprocess = (e) => {
-        if (!voiceModeRef.current || ws.readyState !== WebSocket.OPEN) return;
+        if (!voiceModeRef.current || voiceInputPausedRef.current || isSendingRef.current || isSpeakingRef.current || ws.readyState !== WebSocket.OPEN) return;
         const inputData = e.inputBuffer.getChannelData(0);
         ws.send(inputData.buffer.slice(inputData.byteOffset, inputData.byteOffset + inputData.byteLength));
       };
     } catch (error) {
       voiceModeRef.current = false;
+      voiceAwaitingResponseRef.current = false;
+      voiceInputPausedRef.current = false;
       setVoiceMode(false);
       addToast("error", "Mic error", error instanceof Error ? error.message : String(error));
     }
@@ -3248,20 +3644,20 @@ export function App() {
 
   function stopVoiceConversation() {
     voiceModeRef.current = false;
+    voiceAwaitingResponseRef.current = false;
+    voiceInputPausedRef.current = false;
+    voiceCommandBufferRef.current = "";
     setVoiceMode(false);
-    setAutoSpeak(false);
     setIsRecording(false);
     setLiveTranscript("");
     voiceStateRef.current = "listening";
     setVoiceState("listening");
+    clearVoiceSendTimer();
+    stopSpeaking();
 
     if (voiceAnimFrameRef.current) {
       cancelAnimationFrame(voiceAnimFrameRef.current);
       voiceAnimFrameRef.current = null;
-    }
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
     }
 
     // Close WebSocket
@@ -3292,17 +3688,6 @@ export function App() {
     mediaRecorderRef.current = null;
     voiceAnalyserRef.current = null;
   }
-
-  // Auto-speak response in voice mode
-  useEffect(() => {
-    if (!voiceMode) return;
-    const lastMsg = messages[messages.length - 1];
-    const prevMsg = messages.length > 1 ? messages[messages.length - 2] : null;
-    // Check if we just got a complete assistant response
-    if (lastMsg?.role === "assistant" && lastMsg.content && !isSending && prevMsg?.role !== "tool_card") {
-      void speakText(lastMsg.content);
-    }
-  }, [isSending]);
 
   /* ---- Settings save ---- */
 
@@ -3562,11 +3947,6 @@ export function App() {
                     : "Voice chat"
                   }
                 </button>
-                {/* Auto-speak toggle */}
-                <div className="flex items-center gap-2">
-                  <IconSpeaker className={cn("w-4 h-4", autoSpeak ? "text-blue-600" : "text-zinc-400")} />
-                  <Switch checked={autoSpeak} onCheckedChange={setAutoSpeak} />
-                </div>
               </div>
             </div>
 
