@@ -1,199 +1,149 @@
+![Roxanne banner](docs/assets/roxanne-banner.png)
+
 # Roxanne
 
-A local-first personal research copilot. Chat with your papers, notes, and knowledge base using Anthropic, OpenAI, or local Ollama models.
+Roxanne is a local-first research copilot for chatting with your papers, notes, and knowledge base using Anthropic, OpenAI, or local Ollama models.
 
-## Download
+## Install
 
-For normal users, the best path is the packaged desktop app:
+The install scripts pull the latest published Roxanne release for your platform and install it for you.
 
-- [Download the latest Roxanne installer from Releases](../../releases/latest)
-- [Browse all published installers](../../releases)
-
-If you would rather install from the command line, use one of these:
+### macOS or Linux
 
 ```bash
-# macOS or Linux
 curl -fsSL https://raw.githubusercontent.com/TylerIllman/Roxanne/main/scripts/install.sh | bash
 ```
 
+### Windows PowerShell
+
 ```powershell
-# Windows PowerShell
 irm https://raw.githubusercontent.com/TylerIllman/Roxanne/main/scripts/install-windows.ps1 | iex
 ```
 
-On macOS, the CLI installer removes the quarantine attribute after installation so the app can open without the usual browser-download Gatekeeper block.
+### Optional install flags
 
-Once you push a version tag such as `v0.1.0`, the release workflow in [`.github/workflows/release.yml`](.github/workflows/release.yml) will build and attach platform-specific installers:
+Install a specific version:
 
-- macOS: `.dmg`
-- Windows: `.exe`
-- Linux: `AppImage`
+```bash
+ROXANNE_VERSION=v0.1.2 curl -fsSL https://raw.githubusercontent.com/TylerIllman/Roxanne/main/scripts/install.sh | bash
+```
 
-## Install The App Locally
+```powershell
+$env:ROXANNE_VERSION="v0.1.2"; irm https://raw.githubusercontent.com/TylerIllman/Roxanne/main/scripts/install-windows.ps1 | iex
+```
 
-If you want a real installable app bundle instead of running Roxanne in dev mode:
+Install without auto-opening the app:
+
+```bash
+ROXANNE_NO_OPEN=1 curl -fsSL https://raw.githubusercontent.com/TylerIllman/Roxanne/main/scripts/install.sh | bash
+```
+
+```powershell
+$env:ROXANNE_NO_OPEN="1"; irm https://raw.githubusercontent.com/TylerIllman/Roxanne/main/scripts/install-windows.ps1 | iex
+```
+
+On macOS, the CLI installer removes the quarantine attribute after installation so the app can open more cleanly than a normal browser download.
+
+## Develop Locally
 
 ### Prerequisites
 
-- **Python 3.10+**
-- **Node.js 20+**
-- platform build tools for Electron packaging
-- optional: code signing/notarization setup if you want polished production installers
-
-### Build an installer
-
-From the repo root:
-
-```bash
-npm install
-npm run dist:desktop
-```
-
-That command now does all of this:
-
-1. installs backend packaging deps into the backend Python environment if needed
-2. builds a standalone backend executable with PyInstaller
-3. builds the Electron renderer and main process
-4. creates installable desktop artifacts in `apps/desktop/release`
-
-Useful variants:
-
-```bash
-# Build unpacked app output only
-npm run pack:desktop
-
-# Build just the backend executable
-npm run build:backend-binary
-```
-
-### Install the built app
-
-- macOS: open the generated `.dmg`, drag `Roxanne.app` into `Applications`
-- Windows: run the generated `.exe` installer
-- Linux: run the generated `AppImage` or unpack the tarball
-
-## Developer Quick Start
-
-### Prerequisites
-
-- **Python 3.10+** and **Node.js 20+**
+- Python 3.10+
+- Node.js 20+
 - optional: [Ollama](https://ollama.com) for local models
 
-### 1. Clone and install
+### Clone the repo
 
 ```bash
-git clone <repo-url> && cd roxanne
+git clone https://github.com/TylerIllman/Roxanne.git
+cd Roxanne
 ```
 
-### 2. Backend
+### Set up the backend
 
 ```bash
-cd apps/backend
-python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e .
+python3 -m venv apps/backend/.venv
+source apps/backend/.venv/bin/activate
+pip install -e "./apps/backend[test]"
 ```
 
-### 3. Frontend
+Windows PowerShell:
+
+```powershell
+py -3 -m venv apps/backend/.venv
+.\apps\backend\.venv\Scripts\Activate.ps1
+pip install -e ".\apps\backend[test]"
+```
+
+### Install frontend dependencies
 
 ```bash
-cd apps/desktop
 npm install
 ```
 
-### 4. Run in development
+### Run Roxanne in development
 
-Open two terminals:
+Run the backend and desktop app in separate terminals:
 
 ```bash
 # Terminal 1
-cd apps/backend
-source .venv/bin/activate
-python -m uvicorn roxanne_backend.main:app --host 127.0.0.1 --port 8000 --reload
+source apps/backend/.venv/bin/activate
+python -m uvicorn roxanne_backend.main:app --host 127.0.0.1 --port 8000 --reload --app-dir apps/backend
 
 # Terminal 2
-cd apps/desktop
-npm run dev
+npm --workspace apps/desktop run dev
 ```
 
-Or from the repo root:
+## Build The App Locally
+
+Make sure the backend virtual environment exists and has the build dependencies installed:
 
 ```bash
-npm run dev:backend
-npm run dev:desktop
+source apps/backend/.venv/bin/activate
+pip install -e "./apps/backend[build]"
 ```
 
-The app opens automatically. Walk through the setup wizard to connect your LLM, Zotero library, and Obsidian vaults.
-
-## Release Automation
-
-GitHub Actions now covers both everyday changes and releases:
-
-- push branches or open a PR: [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs backend tests plus the desktop type-check and build
-- push a tag like `v0.1.0`: [`.github/workflows/release.yml`](.github/workflows/release.yml) builds macOS, Windows, and Linux installers and uploads them to the matching GitHub Release
-
-You can also trigger the workflow manually from the Actions tab.
-
-### Maintainer release flow
-
-Once the repo is on GitHub, publishing a downloadable app is:
+Then build the desktop app from the repo root:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+ROXANNE_PYTHON_BIN="$PWD/apps/backend/.venv/bin/python3" npm run pack:desktop
 ```
 
-That tag triggers the release workflow, which builds installers and publishes them to GitHub Releases so people can install Roxanne without running any dev commands.
+That creates an unpacked packaged build for your current platform.
 
-## Running Tests
+To build the actual installer for your current platform:
 
 ```bash
-cd apps/backend
-source .venv/bin/activate
-pip install -e ".[test]"
-pytest
+ROXANNE_PYTHON_BIN="$PWD/apps/backend/.venv/bin/python3" npm run dist:desktop
 ```
 
-## Stack
+Build outputs go to `apps/desktop/release`.
 
-| Layer | Technology |
-|-------|-----------|
-| UI | Electron, React, TypeScript, Rsbuild, Tailwind CSS |
-| Backend | FastAPI, Pydantic, Uvicorn |
-| Packaging | PyInstaller, Electron Builder, GitHub Actions |
-| LLM | Anthropic SDK, OpenAI SDK, Ollama (local) |
-| Retrieval | ChromaDB, FastEmbed (BAAI/bge) |
-| PDF | PyMuPDF |
-| Speech | Vosk (STT), Piper (TTS) |
+## Run Tests
 
-## Repo Layout
+Backend tests:
+
+```bash
+source apps/backend/.venv/bin/activate
+python -m pytest apps/backend/tests -m "not slow and not integration"
+```
+
+Desktop type-check:
+
+```bash
+npm --workspace apps/desktop run lint
+```
+
+## Project Layout
 
 ```text
 apps/
-  backend/            FastAPI backend, tools, indexing, orchestration
-    roxanne_backend/  Python package
-    tests/            pytest suite
-  desktop/            Electron shell + React renderer
-    src/main/         Electron main process
-    src/renderer/     React app
+  backend/            FastAPI backend, indexing, orchestration, storage
+  desktop/            Electron shell and React renderer
 scripts/
   build-backend-binary.mjs
   install.sh
   install-windows.ps1
-.github/workflows/
-  release.yml
+docs/assets/
+  roxanne-banner.png
 ```
-
-## Environment Variables
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ROXANNE_BACKEND_URL` | `http://127.0.0.1:8000` | Backend URL for the Electron app |
-| `ROXANNE_RENDERER_URL` | built files or dev server | Dev server URL for hot reload |
-| `ROXANNE_BACKEND_CMD` | unset | Override the backend command Electron should launch |
-| `ROXANNE_PYTHON_BIN` | auto-detected | Override the Python interpreter used when building the backend binary |
-| `ROXANNE_HOME` | platform app-data dir | Override where Roxanne stores local config, secrets, and indexes |
-
-## Design System
-
-See [`apps/desktop/src/renderer/DESIGN_SYSTEM.md`](apps/desktop/src/renderer/DESIGN_SYSTEM.md) for UI tokens, component patterns, and styling rules.
