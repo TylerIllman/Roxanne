@@ -2,6 +2,8 @@
   "name": "roxanne-desktop",
   "version": "0.1.0",
   "private": true,
+  "description": "Roxanne desktop app for local-first research chat.",
+  "author": "Tyler Illman",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
@@ -33,7 +35,7 @@
     "@types/react-dom": "^18.3.1",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
-    "electron": "^33.3.1",
+    "electron": "33.3.1",
     "electron-builder": "^25.1.8",
     "tailwindcss": "^4.1.13",
     "tsup": "^8.3.5",
@@ -43,6 +45,7 @@
   "build": {
     "appId": "com.roxanne.assistant",
     "productName": "Roxanne",
+    "electronVersion": "33.3.1",
     "directories": {
       "output": "release"
     },
