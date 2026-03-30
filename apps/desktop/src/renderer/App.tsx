@@ -15,7 +15,6 @@ import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
 
 import {
-  appendMessage,
   browseIndex,
   createConversation,
   deleteConversation,
@@ -2996,30 +2995,24 @@ export function App() {
 
     setMessages((c) => [...c, { id: makeId(), role: "user", content: prompt }, { id: assistantMessageId, role: "assistant", content: "" }]);
 
-    // Persist user message
-    if (convId) void appendMessage(baseUrl, convId, "user", prompt);
-
     try {
-      let finalAssistantText = "";
       await streamChat(
         baseUrl,
-        { message: prompt, history, session_id: sessionIdRef.current, voice_mode: voiceModeRef.current },
+        {
+          message: prompt,
+          history,
+          session_id: sessionIdRef.current,
+          voice_mode: voiceModeRef.current,
+          conversation_id: convId,
+        },
         async (event) => {
           await handleStreamEvent(event, assistantMessageId);
-          // Capture the final assistant text
-          if (event.type === "assistant_done") {
-            finalAssistantText = ((event.payload as { message?: string })?.message) || "";
-          }
         }
       );
-      // Persist assistant response
-      if (convId && finalAssistantText) {
-        void appendMessage(baseUrl, convId, "assistant", finalAssistantText);
-        void fetchConversations(); // refresh sidebar list
-      }
     } catch (error) {
       appendStatusMessage(setMessages, `Error: ${error instanceof Error ? error.message : String(error)}`);
     } finally {
+      if (convId) void fetchConversations();
       setIsSending(false);
       finishVoiceTurnIfReady();
     }

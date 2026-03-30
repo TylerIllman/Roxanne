@@ -93,6 +93,7 @@ class ChatRequest(BaseModel):
     history: List[ConversationTurn] = Field(default_factory=list)
     session_id: str = Field(default_factory=lambda: uuid4().hex)
     voice_mode: bool = False
+    conversation_id: Optional[str] = None
 
 
 class IndexRequest(BaseModel):

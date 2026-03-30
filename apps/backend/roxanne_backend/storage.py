@@ -26,6 +26,8 @@ class AppPaths:
     def __init__(self, root: Optional[Path] = None) -> None:
         self.root = root or default_app_home()
         self.config_path = self.root / "config.json"
+        self.secrets_path = self.root / "secrets.json"
+        self.secrets_key_path = self.root / "secrets.key"
         self.index_path = self.root / "indexes"
         self.audio_path = self.root / "audio"
         self.logs_path = self.root / "logs"

@@ -1,6 +1,8 @@
 """Tests for conversation persistence."""
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from roxanne_backend.conversations import ConversationStore
@@ -71,3 +73,34 @@ class TestConversationStore:
         result = conv_store.list_all()
         # Most recent should be first
         assert result[0]["title"] == "Third"
+
+    def test_prompt_history_returns_only_chat_turns(self, conv_store: ConversationStore):
+        created = conv_store.create("History Test")
+        conv_store.append_message(created["id"], "user", "First")
+        conv_store.append_message(created["id"], "assistant", "Reply")
+        history = conv_store.prompt_history(created["id"])
+        assert history == [
+            {"role": "user", "content": "First"},
+            {"role": "assistant", "content": "Reply"},
+        ]
+
+    def test_migrates_legacy_json_files(self, app_paths: AppPaths):
+        legacy_dir = app_paths.root / "conversations"
+        legacy_dir.mkdir(parents=True, exist_ok=True)
+        (legacy_dir / "legacy123.json").write_text(json.dumps({
+            "id": "legacy123",
+            "title": "Legacy Chat",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "updated_at": "2026-01-01T00:00:01+00:00",
+            "messages": [
+                {"role": "user", "content": "Old question", "timestamp": "2026-01-01T00:00:00+00:00"},
+                {"role": "assistant", "content": "Old answer", "timestamp": "2026-01-01T00:00:01+00:00"},
+            ],
+        }))
+
+        store = ConversationStore(app_paths.root)
+        fetched = store.get("legacy123")
+
+        assert fetched is not None
+        assert fetched["title"] == "Legacy Chat"
+        assert [message["content"] for message in fetched["messages"]] == ["Old question", "Old answer"]

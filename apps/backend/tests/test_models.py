@@ -139,6 +139,7 @@ class TestChatRequest:
         assert r.message == "hello"
         assert r.history == []
         assert r.voice_mode is False
+        assert r.conversation_id is None
         assert len(r.session_id) > 0
 
     def test_message_required(self):
@@ -155,6 +156,10 @@ class TestChatRequest:
     def test_voice_mode(self):
         r = ChatRequest(message="test", voice_mode=True)
         assert r.voice_mode is True
+
+    def test_conversation_id(self):
+        r = ChatRequest(message="test", conversation_id="conv123")
+        assert r.conversation_id == "conv123"
 
 
 # ── Other Models ───────────────────────────────────────────────────

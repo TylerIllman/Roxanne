@@ -15,7 +15,7 @@ from roxanne_backend.storage import AppPaths, read_json, write_json
 class ConfigStore:
     def __init__(self, paths: AppPaths, secret_store: Optional[SecretStore] = None) -> None:
         self.paths = paths
-        self.secret_store = secret_store or SecretStore()
+        self.secret_store = secret_store or SecretStore(paths)
 
     def load(self) -> AppConfig:
         raw = read_json(self.paths.config_path)

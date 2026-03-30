@@ -8,8 +8,10 @@
   "scripts": {
     "dev:desktop": "npm --workspace apps/desktop run dev",
     "dev:backend": "python3 -m uvicorn roxanne_backend.main:app --reload --app-dir apps/backend",
+    "build:backend-binary": "node ./scripts/build-backend-binary.mjs",
     "build:desktop": "npm --workspace apps/desktop run build",
+    "dist:desktop": "npm --workspace apps/desktop run dist",
+    "pack:desktop": "npm --workspace apps/desktop run dist:dir",
     "lint:desktop": "npm --workspace apps/desktop run lint"
   }
 }
-

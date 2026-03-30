@@ -22,6 +22,7 @@ from roxanne_backend.ingestion.indexer import ContentIndexer
 from roxanne_backend.models import (
     AppConfig,
     ChatRequest,
+    ConversationTurn,
     IndexRequest,
     SpeechSynthesisRequest,
 )
@@ -501,10 +502,49 @@ async def delete_conversation(conv_id: str):
 
 @app.post("/api/chat/stream")
 async def stream_chat(request: ChatRequest) -> StreamingResponse:
-    return StreamingResponse(
-        services.orchestrator().stream(request),
-        media_type="application/x-ndjson",
-    )
+    orchestrator = services.orchestrator()
+    stream_request = request
+    conversation_id = request.conversation_id
+
+    if conversation_id:
+        history = [
+            ConversationTurn(role=turn["role"], content=turn["content"])
+            for turn in services.conversations.prompt_history(conversation_id)
+        ]
+        if services.conversations.get(conversation_id):
+            services.conversations.append_message(conversation_id, "user", request.message)
+            stream_request = request.model_copy(deep=True)
+            stream_request.history = history
+
+    async def generate():
+        assistant_deltas: list[str] = []
+        assistant_done_message = ""
+        assistant_completed = False
+
+        try:
+            async for chunk in orchestrator.stream(stream_request):
+                if conversation_id:
+                    try:
+                        event = json.loads(chunk.decode("utf-8").strip())
+                    except Exception:
+                        event = None
+
+                    if isinstance(event, dict):
+                        if event.get("type") == "assistant_delta" and event.get("delta"):
+                            assistant_deltas.append(str(event["delta"]))
+                        elif event.get("type") == "assistant_done":
+                            assistant_completed = True
+                            payload = event.get("payload") or {}
+                            assistant_done_message = str(payload.get("message") or "")
+
+                yield chunk
+        finally:
+            if conversation_id:
+                assistant_message = (assistant_done_message or "".join(assistant_deltas)).strip()
+                if assistant_completed and assistant_message:
+                    services.conversations.append_message(conversation_id, "assistant", assistant_message)
+
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
 
 
 @app.post("/api/audio/transcribe-upload")

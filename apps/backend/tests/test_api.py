@@ -6,12 +6,15 @@ polluting the real app data.
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+
+os.environ.setdefault("ROXANNE_HOME", tempfile.mkdtemp(prefix="roxanne-test-home-"))
 
 from roxanne_backend.main import app, services
 
@@ -21,9 +24,12 @@ def _isolate_conversations(tmp_path):
     """Swap the conversation store to a temp dir for every test."""
     from roxanne_backend.conversations import ConversationStore
     original = services.conversations
+    original_secret_get = services.config_store.secret_store.get
     services.conversations = ConversationStore(tmp_path)
+    services.config_store.secret_store.get = lambda _key: None
     yield
     services.conversations = original
+    services.config_store.secret_store.get = original_secret_get
 
 
 @pytest.fixture
@@ -128,6 +134,49 @@ class TestConversationEndpoints:
     def test_get_nonexistent(self, client: TestClient):
         resp = client.get("/api/conversations/nonexistent-id")
         assert resp.status_code in (200, 404)
+
+
+class TestChatEndpoints:
+    def test_stream_chat_uses_canonical_conversation_history(self, client: TestClient, monkeypatch: pytest.MonkeyPatch):
+        class DummyOrchestrator:
+            def __init__(self) -> None:
+                self.seen_request = None
+
+            async def stream(self, request):
+                self.seen_request = request
+                yield b'{"type":"assistant_delta","delta":"Backend reply"}\n'
+                yield b'{"type":"assistant_done","payload":{"message":"Backend reply"}}\n'
+
+        create_resp = client.post("/api/conversations", json={"title": "Canonical Chat"})
+        conv_id = create_resp.json()["id"]
+        client.post(f"/api/conversations/{conv_id}/messages", json={"role": "user", "content": "Earlier question"})
+        client.post(f"/api/conversations/{conv_id}/messages", json={"role": "assistant", "content": "Earlier answer"})
+
+        dummy = DummyOrchestrator()
+        monkeypatch.setattr(services, "orchestrator", lambda: dummy)
+
+        resp = client.post("/api/chat/stream", json={
+            "conversation_id": conv_id,
+            "message": "Follow up",
+            "history": [{"role": "user", "content": "stale local history"}],
+            "session_id": "session-123",
+        })
+
+        assert resp.status_code == 200
+        assert dummy.seen_request is not None
+        assert [(turn.role, turn.content) for turn in dummy.seen_request.history] == [
+            ("user", "Earlier question"),
+            ("assistant", "Earlier answer"),
+        ]
+
+        stored = services.conversations.get(conv_id)
+        assert stored is not None
+        assert [(message["role"], message["content"]) for message in stored["messages"]] == [
+            ("user", "Earlier question"),
+            ("assistant", "Earlier answer"),
+            ("user", "Follow up"),
+            ("assistant", "Backend reply"),
+        ]
 
 
 # ── Speech ─────────────────────────────────────────────────────────

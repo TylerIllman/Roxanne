@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 
 const rendererUrl = process.env.ROXANNE_RENDERER_URL;
@@ -16,6 +17,24 @@ function backendWorkingDirectory() {
   return path.join(repoRoot(), "apps", "backend");
 }
 
+function packagedBackendPath() {
+  const backendDir = path.join(process.resourcesPath, "backend");
+  const candidates = process.platform === "win32"
+    ? [path.join(backendDir, "roxanne-backend.exe"), path.join(backendDir, "roxanne-backend")]
+    : [path.join(backendDir, "roxanne-backend")];
+
+  return candidates.find((candidate) => fs.existsSync(candidate)) || null;
+}
+
+function backendEnvironment() {
+  return {
+    ...process.env,
+    ROXANNE_HOME: process.env.ROXANNE_HOME || app.getPath("userData"),
+    ROXANNE_HOST: "127.0.0.1",
+    ROXANNE_PORT: "8000",
+  };
+}
+
 function startBackend() {
   if (backendProcess) {
     return;
@@ -24,13 +43,26 @@ function startBackend() {
   if (process.env.ROXANNE_BACKEND_CMD) {
     backendProcess = spawn(process.env.ROXANNE_BACKEND_CMD, {
       cwd: repoRoot(),
-      env: process.env,
+      env: backendEnvironment(),
       shell: true,
+    });
+  } else if (app.isPackaged) {
+    const bundledBackend = packagedBackendPath();
+    if (!bundledBackend) {
+      dialog.showErrorBox(
+        "Backend Missing",
+        "Roxanne could not find its bundled backend executable. Reinstall the app or rebuild the release package."
+      );
+      return;
+    }
+
+    backendProcess = spawn(bundledBackend, [], {
+      cwd: path.dirname(bundledBackend),
+      env: backendEnvironment(),
     });
   } else {
     // Use the project venv Python if it exists, otherwise fall back to python3
     const venvPython = path.join(backendWorkingDirectory(), ".venv", "bin", "python3");
-    const fs = require("node:fs");
     const pythonPath = fs.existsSync(venvPython) ? venvPython : "python3";
 
     backendProcess = spawn(
@@ -48,7 +80,7 @@ function startBackend() {
       ],
       {
         cwd: repoRoot(),
-        env: process.env,
+        env: backendEnvironment(),
       }
     );
   }

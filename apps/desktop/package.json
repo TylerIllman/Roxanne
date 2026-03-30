@@ -11,6 +11,8 @@
     "build": "npm run build:renderer && npm run build:main",
     "build:renderer": "rsbuild build",
     "build:main": "tsup src/main/main.ts src/main/preload.ts --format cjs --platform node --external electron --outDir dist-electron --clean",
+    "dist:dir": "node ../../scripts/build-backend-binary.mjs && npm run build && electron-builder --dir --publish never",
+    "dist": "node ../../scripts/build-backend-binary.mjs && npm run build && electron-builder --publish never",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -32,9 +34,52 @@
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
     "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
     "tailwindcss": "^4.1.13",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "com.roxanne.assistant",
+    "productName": "Roxanne",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../backend/dist",
+        "to": "backend",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ],
+      "category": "Office"
+    }
   }
 }

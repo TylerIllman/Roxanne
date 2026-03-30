@@ -79,6 +79,7 @@ export type ChatRequest = {
   history?: ConversationTurn[];
   session_id: string;
   voice_mode?: boolean;
+  conversation_id?: string | null;
 };
 
 export type StreamEvent = {
