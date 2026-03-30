@@ -8,8 +8,8 @@ import chromadb
 from fastembed import TextEmbedding
 from openai import OpenAI
 
-from jarvis_backend.models import EmbeddingConfig, IndexedDocument
-from jarvis_backend.storage import AppPaths
+from roxanne_backend.models import EmbeddingConfig, IndexedDocument
+from roxanne_backend.storage import AppPaths
 
 
 class EmbeddingManager:
@@ -47,6 +47,7 @@ class RetrievalStore:
 
     def __init__(self, paths: AppPaths, embedding_settings: EmbeddingConfig) -> None:
         paths.ensure()
+        self._paths = paths
         self.client = chromadb.PersistentClient(path=str(paths.index_path))
         self.embeddings = EmbeddingManager(embedding_settings)
 
@@ -78,12 +79,18 @@ class RetrievalStore:
         where: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         collection = self._collection(collection_name)
-        response = collection.query(
-            query_embeddings=[self.embeddings.embed_query(query)],
-            n_results=n_results,
-            where=where,
-            include=["documents", "metadatas", "distances"],
-        )
+        try:
+            response = collection.query(
+                query_embeddings=[self.embeddings.embed_query(query)],
+                n_results=n_results,
+                where=where,
+                include=["documents", "metadatas", "distances"],
+            )
+        except Exception as exc:
+            # Empty collection or corrupted HNSW index — return empty results
+            if "Nothing found on disk" in str(exc) or "no data" in str(exc).lower():
+                return []
+            raise
         documents = response.get("documents", [[]])[0]
         metadatas = response.get("metadatas", [[]])[0]
         distances = response.get("distances", [[]])[0]

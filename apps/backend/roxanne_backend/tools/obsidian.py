@@ -3,11 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from jarvis_backend.config import ConfigStore
-from jarvis_backend.ingestion.indexer import ContentIndexer
-from jarvis_backend.models import VaultConfig
-from jarvis_backend.retrieval import RetrievalStore
-from jarvis_backend.tools.base import BaseTool, ToolExecutionError
+from roxanne_backend.config import ConfigStore
+from roxanne_backend.ingestion.indexer import ContentIndexer
+from roxanne_backend.models import VaultConfig
+from roxanne_backend.retrieval import RetrievalStore
+from roxanne_backend.tools.base import BaseTool, ToolExecutionError
 
 
 class ReadNotesTool(BaseTool):

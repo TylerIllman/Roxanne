@@ -37,8 +37,10 @@ import {
   synthesizeSpeech,
   uploadAudio,
   waitForBackend,
+  runIndexStreaming,
+  getIndexActivity,
 } from "./api";
-import type { ConversationSummary, OllamaPullEvent, OllamaStatus, SpeechSetupEvent } from "./api";
+import type { ConversationSummary, IndexActivity, IndexEvent, OllamaPullEvent, OllamaStatus, SpeechSetupEvent } from "./api";
 import { Badge } from "./components/ui/badge";
 import { Button } from "./components/ui/button";
 import { Input } from "./components/ui/input";
@@ -278,7 +280,7 @@ function ToastContainer({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id
         <div
           key={toast.id}
           className={cn(
-            "flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg border backdrop-blur-sm",
+            "flex items-start gap-3 px-4 py-3 rounded-lg shadow-lg border backdrop-blur-sm",
             toast.exiting ? "animate-[toast-out_200ms_ease-in_forwards]" : "animate-[toast-in_300ms_ease-out_both]",
             toast.type === "error" && "bg-red-50 border-red-200 text-red-900",
             toast.type === "success" && "bg-emerald-50 border-emerald-200 text-emerald-900",
@@ -332,7 +334,7 @@ function SetupModal({ need, baseUrl, configForm, setConfigForm, onClose }: {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 backdrop-blur-sm animate-[fade-in_150ms_ease-out]" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="bg-white rounded-2xl shadow-2xl border border-zinc-200 w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto animate-[scale-in_200ms_ease-out]">
+      <div className="bg-white rounded-lg shadow-sm border border-zinc-200 w-full max-w-lg mx-4 max-h-[80vh] overflow-y-auto animate-[scale-in_200ms_ease-out]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-3">
           <div>
@@ -396,7 +398,7 @@ function VoskSetupPanel({ baseUrl, onDone }: { baseUrl: string; onDone: () => vo
 
   return (
     <div className="flex flex-col gap-3">
-      <div className={cn("flex items-center gap-2.5 px-3 py-2.5 border rounded-xl text-xs", status?.vosk_ready ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-500")}>
+      <div className={cn("flex items-center gap-2 px-3 py-2 border rounded-lg text-xs", status?.vosk_ready ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-500")}>
         <span className={cn("shrink-0 w-5 h-5 grid place-items-center rounded-full", status?.vosk_ready ? "bg-emerald-100" : "bg-zinc-200")}>
           {status?.vosk_ready ? <IconCheck className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />}
         </span>
@@ -412,12 +414,12 @@ function VoskSetupPanel({ baseUrl, onDone }: { baseUrl: string; onDone: () => vo
       )}
 
       {installing && lastEvent && (
-        <div className="px-4 py-3 rounded-xl border border-amber-200 bg-amber-50">
+        <div className="px-4 py-3 rounded-lg border border-amber-200 bg-amber-50">
           <div className="flex items-center gap-2 mb-2">
             <svg className="w-4 h-4 text-amber-500 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4 31.4" strokeLinecap="round" /></svg>
             <span className="text-xs font-semibold text-amber-800">Installing...</span>
           </div>
-          <p className="text-[0.65rem] text-amber-600">{lastEvent.detail || lastEvent.step}</p>
+          <p className="text-xs text-amber-600">{lastEvent.detail || lastEvent.step}</p>
         </div>
       )}
     </div>
@@ -455,7 +457,7 @@ function PiperSetupPanel({ baseUrl, onDone }: { baseUrl: string; onDone: () => v
         { label: "Piper TTS", ok: status?.piper_installed },
         { label: "Voice model", ok: status?.voice_installed },
       ].map((item) => (
-        <div key={item.label} className={cn("flex items-center gap-2.5 px-3 py-2.5 border rounded-xl text-xs", item.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-500")}>
+        <div key={item.label} className={cn("flex items-center gap-2 px-3 py-2 border rounded-lg text-xs", item.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-500")}>
           <span className={cn("shrink-0 w-5 h-5 grid place-items-center rounded-full", item.ok ? "bg-emerald-100" : "bg-zinc-200")}>
             {item.ok ? <IconCheck className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />}
           </span>
@@ -472,12 +474,12 @@ function PiperSetupPanel({ baseUrl, onDone }: { baseUrl: string; onDone: () => v
       )}
 
       {installing && lastEvent && (
-        <div className="px-4 py-3 rounded-xl border border-amber-200 bg-amber-50">
+        <div className="px-4 py-3 rounded-lg border border-amber-200 bg-amber-50">
           <div className="flex items-center gap-2 mb-2">
             <svg className="w-4 h-4 text-amber-500 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4 31.4" strokeLinecap="round" /></svg>
             <span className="text-xs font-semibold text-amber-800">Installing...</span>
           </div>
-          <p className="text-[0.65rem] text-amber-600">{lastEvent.detail || lastEvent.step}</p>
+          <p className="text-xs text-amber-600">{lastEvent.detail || lastEvent.step}</p>
         </div>
       )}
     </div>
@@ -490,9 +492,9 @@ function PiperSetupPanel({ baseUrl, onDone }: { baseUrl: string; onDone: () => v
 
 function Field({ label, hint, htmlFor, children }: { label: string; hint?: string; htmlFor?: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="flex flex-col gap-1">
       <Label htmlFor={htmlFor}>{label}</Label>
-      {hint && <p className="text-zinc-400 text-[0.82rem] leading-snug">{hint}</p>}
+      {hint && <p className="text-zinc-400 text-xs leading-snug">{hint}</p>}
       {children}
     </div>
   );
@@ -502,7 +504,7 @@ function PathPicker({ value, onPick, placeholder, label }: { value: string; onPi
   return (
     <button
       type="button"
-      className="flex items-center gap-3 w-full px-3.5 py-3 border border-zinc-200 rounded-xl bg-white text-left cursor-pointer transition-all duration-150 hover:border-zinc-300 hover:shadow-sm"
+      className="flex items-center gap-3 w-full px-3 py-3 border border-zinc-200 rounded-lg bg-white text-left cursor-pointer transition-colors hover:border-zinc-300"
       onClick={onPick}
     >
       <div className="shrink-0 w-9 h-9 grid place-items-center rounded-lg bg-zinc-100 text-zinc-500">
@@ -620,103 +622,84 @@ function MarkdownContent({ content }: { content: string }) {
  * Renders as clickable inline pill buttons that open the PDF at the specific page.
  * Shows quoted text on hover.
  */
-function CitationContent({ content }: { content: string }) {
-  // Convert [CITE:path|page|text] → special markdown links
-  const processed = content.replace(
+/** Parse [CITE:path|page|text] tags out of content */
+type ParsedCitation = { filePath: string; page: number; quotedText: string; label: string };
+
+function parseCitations(content: string): { cleanContent: string; citations: ParsedCitation[] } {
+  const citations: ParsedCitation[] = [];
+  const seen = new Set<string>();
+  const cleanContent = content.replace(
     /\[CITE:([^|\]]+)(?:\|([^|\]]*))?(?:\|([^\]]*))?\]/g,
-    (_match, filePath: string, page?: string, text?: string) => {
-      const p = (page || "").trim();
-      const t = (text || "").trim();
-      const params = new URLSearchParams();
-      params.set("path", filePath.trim());
-      if (p) params.set("page", p);
-      if (t) params.set("text", t);
-      const label = p ? `p.${p}` : "source";
-      return `[📄 ${label}](cite://?${params.toString()})`;
+    (_match, filePath: string, pageStr?: string, text?: string) => {
+      const fp = (filePath || "").trim();
+      const page = parseInt((pageStr || "").trim(), 10) || 0;
+      const quotedText = (text || "").trim();
+      // Extract filename for label
+      const fileName = fp.split("/").pop()?.replace(".pdf", "") || "Source";
+      // Deduplicate by path+page
+      const key = `${fp}|${page}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        citations.push({ filePath: fp, page, quotedText, label: fileName });
+      }
+      return ""; // strip from rendered text
     }
   );
+  return { cleanContent: cleanContent.trim(), citations };
+}
+
+function CitationContent({ content }: { content: string }) {
+  const { cleanContent, citations } = useMemo(() => parseCitations(content), [content]);
 
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
-      rehypePlugins={[rehypeKatex]}
-      components={{
-        p: ({ children }) => <p className="text-sm leading-relaxed mb-2 last:mb-0">{children}</p>,
-        h1: ({ children }) => <h1 className="text-lg font-bold mb-2 mt-3">{children}</h1>,
-        h2: ({ children }) => <h2 className="text-base font-bold mb-1.5 mt-2.5">{children}</h2>,
-        h3: ({ children }) => <h3 className="text-sm font-bold mb-1 mt-2">{children}</h3>,
-        ul: ({ children }) => <ul className="list-disc pl-5 mb-2 text-sm leading-relaxed">{children}</ul>,
-        ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 text-sm leading-relaxed">{children}</ol>,
-        li: ({ children }) => <li className="mb-0.5">{children}</li>,
-        code: ({ className, children, ...props }) => {
-          const isBlock = className?.includes("language-");
-          if (isBlock) {
-            return <pre className="bg-zinc-900 text-zinc-100 rounded-lg p-3 text-xs overflow-x-auto mb-2"><code {...props} className={className}>{children}</code></pre>;
-          }
-          return <code {...props} className="bg-zinc-100 px-1.5 py-0.5 rounded text-[0.8rem] font-mono text-zinc-800">{children}</code>;
-        },
-        blockquote: ({ children }) => <blockquote className="border-l-2 border-zinc-300 pl-3 italic text-zinc-600 my-2">{children}</blockquote>,
-        table: ({ children }) => (
-          <div className="overflow-x-auto mb-2">
-            <table className="min-w-full border-collapse text-xs">{children}</table>
-          </div>
-        ),
-        th: ({ children }) => <th className="border border-zinc-200 px-3 py-1.5 bg-zinc-50 text-left font-semibold text-xs">{children}</th>,
-        td: ({ children }) => <td className="border border-zinc-200 px-3 py-1.5 text-xs">{children}</td>,
-        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-        hr: () => <hr className="border-zinc-200 my-3" />,
-        a: ({ href, children }) => {
-          if (href?.startsWith("cite://")) {
-            try {
-              const params = new URLSearchParams(href.replace("cite://", "").replace("?", ""));
-              const filePath = params.get("path") || "";
-              const page = params.get("page") || "";
-              const quotedText = params.get("text") || "";
-              return <CiteButton filePath={filePath} page={page} quotedText={quotedText}>{children}</CiteButton>;
-            } catch {
-              return <span className="text-blue-600">{children}</span>;
-            }
-          }
-          return <a href={href} className="text-blue-600 underline hover:text-blue-800" target="_blank" rel="noopener noreferrer">{children}</a>;
-        },
-      }}
-    >
-      {processed}
-    </ReactMarkdown>
+    <div>
+      <MarkdownContent content={cleanContent} />
+      {citations.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-zinc-100">
+          {citations.map((cite, i) => (
+            <CitationChip key={i} citation={cite} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
-/** Inline citation button — opens PDF at page via Zotero, shows quoted text on hover */
-function CiteButton({ filePath, page, quotedText, children }: { filePath: string; page: string; quotedText: string; children: ReactNode }) {
+/** Small clickable chip that opens the PDF in Zotero at the right page */
+function CitationChip({ citation }: { citation: ParsedCitation }) {
   const [showTooltip, setShowTooltip] = useState(false);
-  const pageNum = parseInt(page, 10);
+  const { filePath, page, quotedText, label } = citation;
 
   function handleClick() {
     if (!filePath) return;
-    if (pageNum > 0) {
-      void window.jarvis.openPdfAtPage(filePath, pageNum);
+    if (page > 0) {
+      void window.roxanne.openPdfAtPage(filePath, page);
     } else {
-      void window.jarvis.openPath(filePath);
+      void window.roxanne.openPath(filePath);
     }
   }
 
+  // Truncate label for display
+  const shortLabel = label.length > 30 ? label.slice(0, 28) + "…" : label;
+
   return (
-    <span className="relative inline-flex align-baseline">
+    <span className="relative inline-flex">
       <button
         type="button"
         onClick={handleClick}
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
-        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-700 text-[0.7rem] font-medium hover:bg-blue-100 hover:border-blue-300 transition-colors cursor-pointer"
-        title={quotedText ? `"${quotedText}"` : `Open ${filePath}${pageNum > 0 ? ` at page ${pageNum}` : ""}`}
+        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-medium hover:bg-blue-100 hover:border-blue-300 transition-colors cursor-pointer"
       >
-        {children}
+        <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 1h8a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z" /><path d="M5 5h6M5 8h6M5 11h3" /></svg>
+        <span className="truncate max-w-[160px]">{shortLabel}</span>
+        {page > 0 && <span className="text-blue-400 shrink-0">p.{page}</span>}
       </button>
       {showTooltip && quotedText && (
         <div className="absolute bottom-full left-0 mb-1.5 z-50 max-w-xs w-max pointer-events-none">
-          <div className="bg-zinc-900 text-white text-[0.65rem] leading-snug px-3 py-2 rounded-lg shadow-lg">
-            <p className="italic">"{quotedText.slice(0, 200)}{quotedText.length > 200 ? "..." : ""}"</p>
-            {pageNum > 0 && <p className="mt-1 text-zinc-400 not-italic">Page {pageNum}</p>}
+          <div className="bg-zinc-900 text-white text-xs leading-snug px-3 py-2 rounded-lg shadow-lg">
+            <p className="italic">&ldquo;{quotedText.slice(0, 200)}{quotedText.length > 200 ? "…" : ""}&rdquo;</p>
+            {page > 0 && <p className="mt-1 text-zinc-400 not-italic">Page {page}</p>}
           </div>
         </div>
       )}
@@ -730,21 +713,21 @@ function SearchResultsCard({ payload }: { payload: unknown }) {
   if (!results.length) return null;
   return (
     <div className="flex flex-col gap-1 my-2">
-      <span className="text-[0.65rem] font-bold text-zinc-400 uppercase tracking-wider mb-1">Papers Found</span>
+      <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Papers Found</span>
       {results.slice(0, 6).map((r, i) => (
         <button
           key={i}
           type="button"
-          className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-zinc-100 bg-zinc-50 hover:bg-zinc-100 transition-colors text-left"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 transition-colors text-left"
           onClick={() => {
             const fp = r.file_path as string;
-            if (fp) void window.jarvis.openPath(fp);
+            if (fp) void window.roxanne.openPath(fp);
           }}
         >
           <IconDocument className="shrink-0 text-blue-500" />
           <div className="flex-1 min-w-0">
             <span className="text-xs font-semibold text-zinc-800 truncate block">{String(r.title || "Untitled")}</span>
-            <span className="text-[0.65rem] text-zinc-400">
+            <span className="text-xs text-zinc-400">
               {r.authors ? String(r.authors).split(";")[0].trim() : ""}
               {r.year ? ` · ${r.year}` : ""}
               {r.collections ? ` · ${String(r.collections).split(";")[0].trim()}` : ""}
@@ -761,16 +744,16 @@ function ChunkResultsCard({ payload }: { payload: unknown }) {
   const chunks = (payload as Array<Record<string, unknown>>) || [];
   if (!chunks.length) return null;
   return (
-    <div className="flex flex-col gap-1.5 my-2">
-      <span className="text-[0.65rem] font-bold text-zinc-400 uppercase tracking-wider mb-0.5">Retrieved Chunks</span>
+    <div className="flex flex-col gap-1 my-2">
+      <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-0.5">Retrieved Chunks</span>
       {chunks.slice(0, 3).map((c, i) => (
-        <div key={i} className="px-3 py-2.5 rounded-lg border border-blue-100 bg-blue-50/50">
+        <div key={i} className="px-3 py-2 rounded-lg border border-blue-100 bg-blue-50/50">
           <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-[0.6rem] font-bold text-blue-600">
+            <span className="text-xs font-bold text-blue-600">
               {String(c.title || "").slice(0, 60)}
             </span>
             {c.page_start != null && (
-              <span className="text-[0.6rem] font-medium text-blue-500 bg-blue-100 px-1.5 py-0.5 rounded">
+              <span className="text-xs font-medium text-blue-500 bg-blue-100 px-1.5 py-0.5 rounded">
                 {String(c.page_start) === String(c.page_end) ? `p.${String(c.page_start)}` : `pp.${String(c.page_start)}-${String(c.page_end)}`}
               </span>
             )}
@@ -788,12 +771,12 @@ function NotesResultCard({ payload }: { payload: unknown }) {
   const notes = (data?.notes as Array<Record<string, unknown>>) || [];
   if (!notes.length) return null;
   return (
-    <div className="flex flex-col gap-1.5 my-2">
-      <span className="text-[0.65rem] font-bold text-zinc-400 uppercase tracking-wider mb-0.5">Zotero Notes ({notes.length})</span>
+    <div className="flex flex-col gap-1 my-2">
+      <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-0.5">Zotero Notes ({notes.length})</span>
       {notes.slice(0, 5).map((n, i) => (
-        <div key={i} className="px-3 py-2.5 rounded-lg border border-amber-100 bg-amber-50/50">
+        <div key={i} className="px-3 py-2 rounded-lg border border-amber-100 bg-amber-50/50">
           <p className="text-xs text-zinc-700 leading-relaxed">{String(n.text || "").slice(0, 400)}</p>
-          <span className="text-[0.6rem] text-zinc-400 mt-1 block">
+          <span className="text-xs text-zinc-400 mt-1 block">
             {n.date_modified ? `Modified: ${String(n.date_modified).slice(0, 10)}` : ""}
           </span>
         </div>
@@ -809,9 +792,9 @@ function AnnotationsResultCard({ payload }: { payload: unknown }) {
   if (!annotations.length) return null;
   return (
     <div className="flex flex-col gap-1 my-2">
-      <span className="text-[0.65rem] font-bold text-zinc-400 uppercase tracking-wider mb-0.5">Annotations ({annotations.length})</span>
+      <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-0.5">Annotations ({annotations.length})</span>
       {annotations.slice(0, 8).map((a, i) => (
-        <div key={i} className="flex gap-2 px-3 py-2 rounded-lg border border-zinc-100 bg-zinc-50">
+        <div key={i} className="flex gap-2 px-3 py-2 rounded-lg border border-zinc-200 bg-zinc-50">
           <div
             className="shrink-0 w-1 rounded-full"
             style={{ backgroundColor: (a.color as string) || "#ffd400" }}
@@ -823,7 +806,7 @@ function AnnotationsResultCard({ payload }: { payload: unknown }) {
             {a.comment ? (
               <p className="text-xs text-zinc-500 mt-0.5">{String(a.comment)}</p>
             ) : null}
-            <span className="text-[0.6rem] text-zinc-400">{a.page ? `p.${String(a.page)}` : ""} · {String(a.type || "highlight")}</span>
+            <span className="text-xs text-zinc-400">{a.page ? `p.${String(a.page)}` : ""} · {String(a.type || "highlight")}</span>
           </div>
         </div>
       ))}
@@ -915,14 +898,14 @@ function ToolStepsGroup({ steps, isLatest }: { steps: ChatMessage[]; isLatest: b
     const lastTool = toolNames[toolNames.length - 1] || "";
     return (
       <div className="self-start max-w-[min(85%,720px)] animate-[fade-in_200ms_ease-out_both]">
-        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-zinc-50 border border-zinc-200">
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-50 border border-zinc-200">
           <svg className="w-3.5 h-3.5 text-zinc-400 animate-spin shrink-0" viewBox="0 0 16 16" fill="none">
             <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="2" opacity="0.25" />
             <path d="M8 2a6 6 0 014.9 9.46" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
           </svg>
           <span className="text-xs text-zinc-500 font-medium">{lastTool}</span>
           {toolNames.length > 1 && (
-            <span className="text-[0.65rem] text-zinc-400 ml-1">({toolNames.length} steps)</span>
+            <span className="text-xs text-zinc-400 ml-1">({toolNames.length} steps)</span>
           )}
         </div>
       </div>
@@ -930,21 +913,30 @@ function ToolStepsGroup({ steps, isLatest }: { steps: ChatMessage[]; isLatest: b
   }
 
   // Completed group — show collapsed summary, expandable
+  const hasError = toolNames.some((n) => /^error/i.test(n));
   const summary = toolNames.length === 1
     ? toolNames[0]
-    : `Used ${toolNames.length} tools`;
+    : hasError
+      ? `Error (${toolNames.length} steps)`
+      : `Used ${toolNames.length} tools`;
 
   return (
     <div className="self-start max-w-[min(85%,720px)] animate-[fade-in_200ms_ease-out_both]">
       <button
         type="button"
         onClick={() => setExpanded((e) => !e)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-zinc-50 border border-zinc-100 hover:bg-zinc-100 transition-colors group cursor-pointer"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-50 border border-zinc-200 hover:bg-zinc-100 transition-colors group cursor-pointer"
       >
-        <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" viewBox="0 0 16 16" fill="currentColor">
-          <path d="M8 1a7 7 0 110 14A7 7 0 018 1zm3.35 4.65a.5.5 0 00-.7 0L7 9.29 5.35 7.65a.5.5 0 10-.7.7l2 2a.5.5 0 00.7 0l4-4a.5.5 0 000-.7z" />
-        </svg>
-        <span className="text-xs text-zinc-500 font-medium">{summary}</span>
+        {hasError ? (
+          <svg className="w-3.5 h-3.5 text-red-500 shrink-0" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 1a7 7 0 110 14A7 7 0 018 1zm-.5 3a.5.5 0 011 0v4a.5.5 0 01-1 0V4zm.5 7a.75.75 0 100-1.5.75.75 0 000 1.5z" />
+          </svg>
+        ) : (
+          <svg className="w-3.5 h-3.5 text-emerald-500 shrink-0" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M8 1a7 7 0 110 14A7 7 0 018 1zm3.35 4.65a.5.5 0 00-.7 0L7 9.29 5.35 7.65a.5.5 0 10-.7.7l2 2a.5.5 0 00.7 0l4-4a.5.5 0 000-.7z" />
+          </svg>
+        )}
+        <span className={cn("text-xs font-medium", hasError ? "text-red-600" : "text-zinc-500")}>{summary}</span>
         <svg
           className={cn(
             "w-3 h-3 text-zinc-400 transition-transform ml-1",
@@ -960,12 +952,16 @@ function ToolStepsGroup({ steps, isLatest }: { steps: ChatMessage[]; isLatest: b
       </button>
 
       {expanded && (
-        <div className="mt-2 flex flex-col gap-2 pl-2 border-l-2 border-zinc-100 ml-4 animate-[fade-in_150ms_ease-out_both]">
+        <div className="mt-2 flex flex-col gap-2 pl-2 border-l-2 border-zinc-200 ml-4 animate-[fade-in_150ms_ease-out_both]">
           {steps.map((step) =>
             step.role === "status" ? (
-              <div key={step.id} className="flex items-center gap-2 text-[0.7rem] text-zinc-400">
-                <svg className="w-3 h-3 text-emerald-400 shrink-0" viewBox="0 0 12 12" fill="currentColor">
-                  <circle cx="6" cy="6" r="5" />
+              <div key={step.id} className={cn("flex items-center gap-2 text-xs", /^error/i.test(step.content) ? "text-red-500" : "text-zinc-400")}>
+                <svg className={cn("w-3 h-3 shrink-0", /^error/i.test(step.content) ? "text-red-400" : "text-emerald-400")} viewBox="0 0 12 12" fill="currentColor">
+                  {/^error/i.test(step.content) ? (
+                    <path d="M6 0a6 6 0 110 12A6 6 0 016 0zM5.25 3.5v3.5h1.5V3.5h-1.5zM6 9.25a.75.75 0 100-1.5.75.75 0 000 1.5z" />
+                  ) : (
+                    <circle cx="6" cy="6" r="5" />
+                  )}
                 </svg>
                 {step.content}
               </div>
@@ -994,7 +990,7 @@ function WelcomeStep({ onNext }: { onNext: () => void }) {
           <path d="M13 18l3.5 3.5 6.5-6.5" />
         </svg>
       </div>
-      <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Welcome to Jarvis</h1>
+      <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Welcome to Roxanne</h1>
       <p className="text-sm leading-relaxed text-zinc-500 max-w-[420px]">
         Your local-first research copilot. Let's connect your tools and get everything set up in a few quick steps.
       </p>
@@ -1068,9 +1064,10 @@ function OllamaSetupPanel({ baseUrl, configForm, setConfigForm }: { baseUrl: str
   }, [baseUrl, checkStatus]);
 
   // Re-check when selected model changes
-  const selectedModel = configForm.anthropic.model || "qwen2.5:7b";
+  const selectedModel = configForm.anthropic.model;
+  const isCustom = !MODEL_PRESETS.ollama.some((p) => p.value && p.value === selectedModel);
   useEffect(() => {
-    if (baseUrl && ollamaStatus?.running) void checkStatus();
+    if (baseUrl && ollamaStatus?.running && selectedModel) void checkStatus();
   }, [selectedModel]);
 
   async function handleStart() {
@@ -1126,7 +1123,7 @@ function OllamaSetupPanel({ baseUrl, configForm, setConfigForm }: { baseUrl: str
         { label: "Server running", ok: ollamaStatus.running },
         { label: `Model: ${selectedModel}`, ok: modelInstalled },
       ].map((item) => (
-        <div key={item.label} className={cn("flex items-center gap-2.5 px-3 py-2.5 border rounded-xl text-xs transition-all", item.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-500")}>
+        <div key={item.label} className={cn("flex items-center gap-2 px-3 py-2 border rounded-lg text-xs transition-colors", item.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-500")}>
           <span className={cn("shrink-0 w-5 h-5 grid place-items-center rounded-full", item.ok ? "bg-emerald-100" : "bg-zinc-200")}>
             {item.ok ? <IconCheck className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />}
           </span>
@@ -1137,10 +1134,10 @@ function OllamaSetupPanel({ baseUrl, configForm, setConfigForm }: { baseUrl: str
 
       {/* Not installed */}
       {!ollamaStatus.installed && (
-        <div className="px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 leading-relaxed">
+        <div className="px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 leading-relaxed">
           <p className="font-semibold mb-1">Ollama not found</p>
           <p>Install Ollama to run models locally. Open your terminal and run:</p>
-          <code className="block mt-2 px-3 py-2 bg-amber-100 rounded-lg font-mono text-[0.7rem]">brew install ollama</code>
+          <code className="block mt-2 px-3 py-2 bg-amber-100 rounded-lg font-mono text-xs">brew install ollama</code>
           <p className="mt-2 text-amber-600">Or download from <span className="underline">ollama.com/download</span></p>
           <Button size="sm" className="mt-3" onClick={() => void checkStatus()}>Check again</Button>
         </div>
@@ -1157,21 +1154,23 @@ function OllamaSetupPanel({ baseUrl, configForm, setConfigForm }: { baseUrl: str
       {ollamaStatus.running && (
         <div className="flex flex-col gap-2">
           <label className="text-xs font-semibold text-zinc-600">Select model</label>
-          <Select value={selectedModel} onChange={(e) => setConfigForm((c) => ({ ...c, anthropic: { ...c.anthropic, model: e.target.value } }))}>
+          <Select
+            value={isCustom ? "" : selectedModel}
+            onChange={(e) => setConfigForm((c) => ({ ...c, anthropic: { ...c.anthropic, model: e.target.value } }))}
+          >
             {(MODEL_PRESETS.ollama || []).map((p) => (
               <option key={p.value} value={p.value}>
                 {p.label}{p.value && isModelInstalled(p.value) ? " (installed)" : p.value ? " (needs download)" : ""}
               </option>
             ))}
           </Select>
-          {/* Custom model input */}
-          <Input
-            placeholder="Or type a custom model name (e.g. codellama:7b)"
-            value={MODEL_PRESETS.ollama.some((p) => p.value === selectedModel) ? "" : selectedModel}
-            onChange={(e) => {
-              if (e.target.value) setConfigForm((c) => ({ ...c, anthropic: { ...c.anthropic, model: e.target.value } }));
-            }}
-          />
+          {isCustom && (
+            <Input
+              placeholder="Type a model name (e.g. codellama:7b)"
+              value={selectedModel}
+              onChange={(e) => setConfigForm((c) => ({ ...c, anthropic: { ...c.anthropic, model: e.target.value } }))}
+            />
+          )}
         </div>
       )}
 
@@ -1184,19 +1183,19 @@ function OllamaSetupPanel({ baseUrl, configForm, setConfigForm }: { baseUrl: str
 
       {/* Pull progress */}
       {pulling && pullEvent && (
-        <div className="flex flex-col gap-3 px-4 py-3 rounded-xl border border-amber-200 bg-amber-50">
-          <div className="flex items-start gap-2.5">
+        <div className="flex flex-col gap-3 px-4 py-3 rounded-lg border border-amber-200 bg-amber-50">
+          <div className="flex items-start gap-2">
             <svg className="w-4 h-4 text-amber-500 shrink-0 mt-0.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4 31.4" strokeLinecap="round" /></svg>
             <div>
               <p className="text-xs font-semibold text-amber-800">Downloading {selectedModel}...</p>
-              <p className="text-[0.65rem] text-amber-600 mt-0.5">This may take several minutes for larger models.</p>
+              <p className="text-xs text-amber-600 mt-0.5">This may take several minutes for larger models.</p>
             </div>
           </div>
           <div className="flex items-center justify-between text-xs text-amber-700">
             <span className="truncate max-w-[80%]">{pullEvent.detail}</span>
             <span className="font-semibold">{Math.round(pullEvent.progress * 100)}%</span>
           </div>
-          <div className="w-full h-2 bg-amber-100 rounded-full overflow-hidden">
+          <div className="w-full h-1.5 bg-amber-100 rounded-full overflow-hidden">
             <div className="h-full bg-amber-500 rounded-full transition-all duration-300" style={{ width: `${Math.round(pullEvent.progress * 100)}%` }} />
           </div>
         </div>
@@ -1204,19 +1203,19 @@ function OllamaSetupPanel({ baseUrl, configForm, setConfigForm }: { baseUrl: str
 
       {/* All ready */}
       {ollamaStatus.running && modelInstalled && (
-        <div className="px-3 py-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 font-medium text-center">
+        <div className="px-3 py-2 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-700 font-medium text-center">
           Ready — {selectedModel} is installed and Ollama is running.
         </div>
       )}
 
       {/* Available models */}
       {ollamaStatus.running && ollamaStatus.models.length > 0 && (
-        <div className="text-[0.65rem] text-zinc-400">
+        <div className="text-xs text-zinc-400">
           Installed: {ollamaStatus.models.join(", ")}
         </div>
       )}
 
-      {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-xl">{error}</p>}
+      {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
     </div>
   );
 }
@@ -1247,7 +1246,7 @@ function AnthropicStep({ configForm, setConfigForm, savedConfig, baseUrl }: {
                 key={p}
                 type="button"
                 className={cn(
-                  "flex flex-col items-center gap-1 px-3 py-3 rounded-xl border text-xs font-semibold transition-all",
+                  "flex flex-col items-center gap-1 px-3 py-3 rounded-lg border text-xs font-semibold transition-colors",
                   provider === p
                     ? "border-zinc-900 bg-zinc-900 text-white shadow-sm"
                     : "border-zinc-200 text-zinc-600 hover:border-zinc-300 hover:bg-zinc-50"
@@ -1281,21 +1280,16 @@ function AnthropicStep({ configForm, setConfigForm, savedConfig, baseUrl }: {
           <OllamaSetupPanel baseUrl={baseUrl} configForm={configForm} setConfigForm={setConfigForm} />
         )}
 
-        <Field label="Model" htmlFor="model">
-          <Select id="model" value={presets.some((p) => p.value === configForm.anthropic.model) ? configForm.anthropic.model : ""} onChange={(e) => setConfigForm((c) => ({ ...c, anthropic: { ...c.anthropic, model: e.target.value } }))}>
-            {presets.map((p) => (
-              <option key={p.value} value={p.value}>{p.label}</option>
-            ))}
-          </Select>
-          {provider === "ollama" && (
-            <Input
-              className="mt-2"
-              placeholder="Or type a custom model name..."
-              value={configForm.anthropic.model}
-              onChange={(e) => setConfigForm((c) => ({ ...c, anthropic: { ...c.anthropic, model: e.target.value } }))}
-            />
-          )}
-        </Field>
+        {/* Model selector — only for non-Ollama providers (OllamaSetupPanel handles its own) */}
+        {provider !== "ollama" && (
+          <Field label="Model" htmlFor="model">
+            <Select id="model" value={presets.some((p) => p.value === configForm.anthropic.model) ? configForm.anthropic.model : ""} onChange={(e) => setConfigForm((c) => ({ ...c, anthropic: { ...c.anthropic, model: e.target.value } }))}>
+              {presets.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </Select>
+          </Field>
+        )}
 
         {provider === "openai" && (
           <Field label="API base URL" hint="Leave blank for default OpenAI endpoint.">
@@ -1341,20 +1335,20 @@ function ZoteroStep({ configForm, setConfigForm, baseUrl }: { configForm: Config
     <div className="flex flex-col gap-6 flex-1">
       <div>
         <h2 className="text-xl font-bold tracking-tight text-zinc-900">Point to Zotero</h2>
-        <p className="text-sm text-zinc-500 mt-1">Jarvis indexes PDFs in your Zotero storage folder.</p>
+        <p className="text-sm text-zinc-500 mt-1">Roxanne indexes PDFs in your Zotero storage folder.</p>
       </div>
       <div className="flex flex-col gap-5">
-        {detecting && <div className="px-4 py-2.5 rounded-xl bg-zinc-100 text-zinc-500 text-sm text-center">Looking for Zotero...</div>}
+        {detecting && <div className="px-4 py-2 rounded-lg bg-zinc-100 text-zinc-500 text-sm text-center">Looking for Zotero...</div>}
         {detected && configForm.zotero.storage_path && (
-          <div className="px-4 py-2.5 rounded-xl bg-emerald-50 text-emerald-600 text-sm text-center flex items-center justify-center gap-2">
+          <div className="px-4 py-2 rounded-lg bg-emerald-50 text-emerald-600 text-sm text-center flex items-center justify-center gap-2">
             <IconCheck className="w-4 h-4" /> Found Zotero at the default location
           </div>
         )}
         <Field label="Storage folder" hint="Contains your PDF attachments. Usually ~/Zotero/storage.">
-          <PathPicker label="Storage folder" value={configForm.zotero.storage_path} placeholder="Select your Zotero storage directory..." onPick={async () => { const p = await window.jarvis.pickDirectory(); if (p) setConfigForm((c) => ({ ...c, zotero: { ...c.zotero, storage_path: p } })); }} />
+          <PathPicker label="Storage folder" value={configForm.zotero.storage_path} placeholder="Select your Zotero storage directory..." onPick={async () => { const p = await window.roxanne.pickDirectory(); if (p) setConfigForm((c) => ({ ...c, zotero: { ...c.zotero, storage_path: p } })); }} />
         </Field>
         <Field label="Database (optional)" hint="Enables rich metadata: authors, collections, annotations.">
-          <PathPicker label="Database file" value={configForm.zotero.database_path} placeholder="Select zotero.sqlite..." onPick={async () => { const p = await window.jarvis.pickFile([{ name: "SQLite", extensions: ["sqlite", "sqlite3", "db"] }]); if (p) setConfigForm((c) => ({ ...c, zotero: { ...c.zotero, database_path: p } })); }} />
+          <PathPicker label="Database file" value={configForm.zotero.database_path} placeholder="Select zotero.sqlite..." onPick={async () => { const p = await window.roxanne.pickFile([{ name: "SQLite", extensions: ["sqlite", "sqlite3", "db"] }]); if (p) setConfigForm((c) => ({ ...c, zotero: { ...c.zotero, database_path: p } })); }} />
         </Field>
       </div>
     </div>
@@ -1366,11 +1360,11 @@ function VaultsStep({ configForm, setConfigForm }: { configForm: ConfigForm; set
     <div className="flex flex-col gap-6 flex-1">
       <div>
         <h2 className="text-xl font-bold tracking-tight text-zinc-900">Obsidian Vaults</h2>
-        <p className="text-sm text-zinc-500 mt-1">Connect vaults so Jarvis can search and write notes.</p>
+        <p className="text-sm text-zinc-500 mt-1">Connect vaults so Roxanne can search and write notes.</p>
       </div>
       <div className="flex flex-col gap-4">
         {configForm.obsidian_vaults.map((vault, i) => (
-          <div key={vault.id} className="flex flex-col gap-3 p-4 border border-zinc-200 rounded-xl bg-zinc-50/50">
+          <div key={vault.id} className="flex flex-col gap-3 p-4 border border-zinc-200 rounded-lg bg-zinc-50">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">Vault {i + 1}</span>
               {configForm.obsidian_vaults.length > 1 && (
@@ -1380,7 +1374,7 @@ function VaultsStep({ configForm, setConfigForm }: { configForm: ConfigForm; set
               )}
             </div>
             <PathPicker label="Vault folder" value={vault.path} placeholder="Click to select vault..." onPick={async () => {
-              const p = await window.jarvis.pickDirectory();
+              const p = await window.roxanne.pickDirectory();
               if (p) {
                 const name = p.split("/").pop() || "";
                 setConfigForm((c) => ({ ...c, obsidian_vaults: c.obsidian_vaults.map((v) => v.id === vault.id ? { ...v, path: p, name: v.name || name } : v) }));
@@ -1403,20 +1397,20 @@ function SpeechSetupProgress({ progress, detail, currentStep }: { progress: numb
   const pct = Math.round(progress * 100);
   const stepLabels: Record<string, string> = { vosk: "Vosk STT", piper: "Piper TTS", voice: "Voice model", done: "Complete" };
   return (
-    <div className="flex flex-col gap-4 px-4 py-4 rounded-xl border border-amber-200 bg-amber-50">
-      <div className="flex items-start gap-2.5">
+    <div className="flex flex-col gap-4 px-4 py-4 rounded-lg border border-amber-200 bg-amber-50">
+      <div className="flex items-start gap-2">
         <svg className="w-5 h-5 text-amber-500 shrink-0 mt-0.5 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4 31.4" strokeLinecap="round" /></svg>
         <div>
           <p className="text-sm font-semibold text-amber-800">Downloading {stepLabels[currentStep] || currentStep}...</p>
           <p className="text-xs text-amber-600 mt-0.5">This may take a few minutes depending on your connection. Please don't close the app.</p>
         </div>
       </div>
-      <div className="flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1">
         <div className="flex items-center justify-between text-xs text-amber-700">
           <span className="font-medium">{detail}</span>
           <span className="font-semibold">{pct}%</span>
         </div>
-        <div className="w-full h-2.5 bg-amber-100 rounded-full overflow-hidden">
+        <div className="w-full h-1.5 bg-amber-100 rounded-full overflow-hidden">
           <div className="h-full bg-amber-500 rounded-full transition-all duration-300 ease-out" style={{ width: `${pct}%` }} />
         </div>
       </div>
@@ -1467,9 +1461,9 @@ function SpeechStep({ baseUrl }: { baseUrl: string }) {
         <h2 className="text-xl font-bold tracking-tight text-zinc-900">Local Speech</h2>
         <p className="text-sm text-zinc-500 mt-1">Vosk for real-time speech-to-text, Piper for text-to-speech. All local, no cloud.</p>
       </div>
-      <div className="flex flex-col gap-2.5">
+      <div className="flex flex-col gap-2">
         {items.map((item) => (
-          <div key={item.label} className={cn("flex items-center gap-3 px-4 py-3 border rounded-xl transition-all", item.ready ? "border-emerald-200 bg-emerald-50" : "border-zinc-200 bg-white")}>
+          <div key={item.label} className={cn("flex items-center gap-3 px-4 py-3 border rounded-lg transition-colors", item.ready ? "border-emerald-200 bg-emerald-50" : "border-zinc-200 bg-white")}>
             <div className={cn("shrink-0 w-8 h-8 grid place-items-center rounded-full transition-colors", item.ready ? "bg-emerald-100 text-emerald-600" : "bg-zinc-100 text-zinc-400")}>
               {item.ready ? <IconCheck /> : <span className="w-2 h-2 rounded-full bg-zinc-300" />}
             </div>
@@ -1489,15 +1483,15 @@ function SpeechStep({ baseUrl }: { baseUrl: string }) {
       )}
 
       {status?.ready ? (
-        <div className="px-4 py-3 rounded-xl bg-emerald-50 text-emerald-700 text-sm font-medium text-center">All speech models ready.</div>
+        <div className="px-4 py-3 rounded-lg bg-emerald-50 text-emerald-700 text-sm font-medium text-center">All speech models ready.</div>
       ) : (
         <Button onClick={handleInstall} disabled={installing} className="self-center min-w-[200px]">
           {installing ? "Installing..." : "Download & install speech models"}
         </Button>
       )}
-      {error && <p className="text-sm text-red-500 bg-red-50 px-4 py-2.5 rounded-xl text-center">{error}</p>}
+      {error && <p className="text-sm text-red-500 bg-red-50 px-4 py-2 rounded-lg text-center">{error}</p>}
       {status && !status.piper_supported && (
-        <p className="text-sm text-amber-600 bg-amber-50 px-4 py-2.5 rounded-xl">Piper TTS is not available for your platform. STT will still work.</p>
+        <p className="text-sm text-amber-600 bg-amber-50 px-4 py-2 rounded-lg">Piper TTS is not available for your platform. STT will still work.</p>
       )}
     </div>
   );
@@ -1511,7 +1505,7 @@ function ReadyStep({ onFinish, finishing }: { onFinish: () => void; finishing: b
       </div>
       <h1 className="text-2xl font-bold tracking-tight text-zinc-900">You're all set</h1>
       <p className="text-sm leading-relaxed text-zinc-500 max-w-[420px]">
-        Jarvis will save your settings and build the local search index. This may take a moment on first run.
+        Roxanne will save your settings and build the local search index. This may take a moment on first run.
       </p>
       <Button className="mt-2 min-w-[200px]" onClick={onFinish} disabled={finishing}>
         {finishing ? "Setting up..." : "Save & build index"}
@@ -1567,10 +1561,10 @@ function TreeSection({ title, badge, defaultOpen, icon, children }: {
 }) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   return (
-    <div className="border border-zinc-200 rounded-xl bg-white overflow-hidden">
+    <div className="border border-zinc-200 rounded-lg bg-white overflow-hidden">
       <button
         type="button"
-        className="flex items-center gap-2.5 w-full px-4 py-3 text-left hover:bg-zinc-50 transition-colors"
+        className="flex items-center gap-2 w-full px-4 py-3 text-left hover:bg-zinc-50 transition-colors"
         onClick={() => setOpen(!open)}
       >
         <span className={cn("shrink-0 text-zinc-400 transition-transform duration-150", open && "rotate-90")}>
@@ -1579,10 +1573,10 @@ function TreeSection({ title, badge, defaultOpen, icon, children }: {
         {icon}
         <span className="flex-1 min-w-0 text-sm font-semibold text-zinc-900 truncate">{title}</span>
         {badge !== undefined && (
-          <span className="shrink-0 text-[0.65rem] font-bold text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-full">{badge}</span>
+          <span className="shrink-0 text-xs font-bold text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-full">{badge}</span>
         )}
       </button>
-      {open && <div className="border-t border-zinc-100">{children}</div>}
+      {open && <div className="border-t border-zinc-200">{children}</div>}
     </div>
   );
 }
@@ -1592,13 +1586,13 @@ function PaperRow({ paper, onSelect }: { paper: PaperTreeItem; onSelect: (paperI
   return (
     <button
       type="button"
-      className="flex items-center gap-2.5 w-full px-4 py-2.5 text-left hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-b-0"
+      className="flex items-center gap-2 w-full px-4 py-2 text-left hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-b-0"
       onClick={() => onSelect(paper.paper_id)}
     >
       <IconDocument className="shrink-0 text-zinc-400" />
       <div className="flex-1 min-w-0">
         <span className="text-sm text-zinc-800 truncate block">{paper.title}</span>
-        <span className="text-[0.68rem] text-zinc-400 block mt-0.5">
+        <span className="text-xs text-zinc-400 block mt-0.5">
           {paper.authors?.split(";")[0]?.trim() || ""}
           {paper.year ? ` · ${paper.year}` : ""}
           {paper.total_pages ? ` · ${paper.total_pages} pages` : ""}
@@ -1644,7 +1638,7 @@ function ChunkViewer({ baseUrl, collection, groupId, groupField, title, onBack }
         </button>
         <div className="flex-1 min-w-0">
           <h3 className="text-sm font-bold text-zinc-900 truncate">{title}</h3>
-          <span className="text-[0.68rem] text-zinc-400">{items.length} chunks</span>
+          <span className="text-xs text-zinc-400">{items.length} chunks</span>
         </div>
       </div>
       <div className="flex-1 min-h-0 overflow-y-auto">
@@ -1657,13 +1651,13 @@ function ChunkViewer({ baseUrl, collection, groupId, groupField, title, onBack }
             ? pageStart === pageEnd ? `p.${pageStart}` : `pp.${pageStart}-${pageEnd}`
             : "";
           return (
-            <div key={chunk.id} className="px-5 py-4 border-b border-zinc-100">
+            <div key={chunk.id} className="px-5 py-4 border-b border-zinc-200">
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-[0.65rem] font-bold text-zinc-400 uppercase tracking-wider">
+                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">
                   Chunk {(chunk.metadata.chunk_index as number) ?? i}
                 </span>
                 {pageLabel && (
-                  <span className="text-[0.65rem] font-medium text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">
+                  <span className="text-xs font-medium text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">
                     {pageLabel}
                   </span>
                 )}
@@ -1743,7 +1737,7 @@ function IndexBrowser({ baseUrl, onClose }: { baseUrl: string; onClose: () => vo
   if (drillDown) {
     return (
       <div className="flex flex-col h-full min-h-0">
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-200 bg-white shrink-0">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-200 bg-white shrink-0">
           <h2 className="text-base font-bold text-zinc-900">Index Browser</h2>
           <button type="button" className="text-zinc-400 hover:text-zinc-900 transition-colors p-1" onClick={onClose}><IconX /></button>
         </div>
@@ -1764,13 +1758,13 @@ function IndexBrowser({ baseUrl, onClose }: { baseUrl: string; onClose: () => vo
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-200 bg-white shrink-0">
+      <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-200 bg-white shrink-0">
         <h2 className="text-base font-bold text-zinc-900">Index Browser</h2>
         <button type="button" className="text-zinc-400 hover:text-zinc-900 transition-colors p-1" onClick={onClose}><IconX /></button>
       </div>
 
       {/* Tabs + view toggle */}
-      <div className="flex items-center gap-1 px-5 py-2.5 border-b border-zinc-100 bg-white shrink-0 overflow-x-auto">
+      <div className="flex items-center gap-1 px-5 py-2 border-b border-zinc-200 bg-white shrink-0 overflow-x-auto">
         {INDEX_TABS.map((t) => (
           <button
             key={t}
@@ -1789,14 +1783,14 @@ function IndexBrowser({ baseUrl, onClose }: { baseUrl: string; onClose: () => vo
             <div className="flex border border-zinc-200 rounded-lg overflow-hidden">
               <button
                 type="button"
-                className={cn("px-2 py-1 text-[0.65rem] font-medium", viewMode === "tree" ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-100")}
+                className={cn("px-2 py-1 text-xs font-medium", viewMode === "tree" ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-100")}
                 onClick={() => setViewMode("tree")}
               >
                 Tree
               </button>
               <button
                 type="button"
-                className={cn("px-2 py-1 text-[0.65rem] font-medium", viewMode === "flat" ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-100")}
+                className={cn("px-2 py-1 text-xs font-medium", viewMode === "flat" ? "bg-zinc-900 text-white" : "text-zinc-500 hover:bg-zinc-100")}
                 onClick={() => setViewMode("flat")}
               >
                 Flat
@@ -1807,7 +1801,7 @@ function IndexBrowser({ baseUrl, onClose }: { baseUrl: string; onClose: () => vo
       </div>
 
       {/* Filter */}
-      <div className="px-5 py-2.5 shrink-0 bg-white border-b border-zinc-100">
+      <div className="px-5 py-2 shrink-0 bg-white border-b border-zinc-200">
         <Input placeholder="Filter by title..." value={filter} onChange={(e) => setFilter(e.target.value)} className="h-8 text-sm" />
       </div>
 
@@ -1818,7 +1812,7 @@ function IndexBrowser({ baseUrl, onClose }: { baseUrl: string; onClose: () => vo
         {/* ── Papers tree ── */}
         {!loading && tab === "papers" && viewMode === "tree" && paperTree && (
           <div className="flex flex-col gap-2">
-            <div className="text-[0.68rem] text-zinc-400 mb-1">{paperTree.total_papers} papers in {paperTree.groups.length} collections</div>
+            <div className="text-xs text-zinc-400 mb-1">{paperTree.total_papers} papers in {paperTree.groups.length} collections</div>
             {paperTree.groups
               .filter((g) => !filterLower || g.name.toLowerCase().includes(filterLower) || g.papers.some((p) => p.title.toLowerCase().includes(filterLower)))
               .map((group) => (
@@ -1846,7 +1840,7 @@ function IndexBrowser({ baseUrl, onClose }: { baseUrl: string; onClose: () => vo
         {/* ── Notes tree ── */}
         {!loading && tab === "notes" && viewMode === "tree" && noteTree && (
           <div className="flex flex-col gap-2">
-            <div className="text-[0.68rem] text-zinc-400 mb-1">{noteTree.total_notes} notes in {noteTree.groups.length} vaults</div>
+            <div className="text-xs text-zinc-400 mb-1">{noteTree.total_notes} notes in {noteTree.groups.length} vaults</div>
             {noteTree.groups.map((vault) => (
               <TreeSection
                 key={vault.name}
@@ -1859,10 +1853,10 @@ function IndexBrowser({ baseUrl, onClose }: { baseUrl: string; onClose: () => vo
                   .filter((f) => !filterLower || f.path.toLowerCase().includes(filterLower) || f.notes.some((n) => n.title.toLowerCase().includes(filterLower)))
                   .map((folder) => (
                     <div key={folder.path}>
-                      <div className="flex items-center gap-2 px-4 py-2 bg-zinc-50 border-b border-zinc-100">
+                      <div className="flex items-center gap-2 px-4 py-2 bg-zinc-50 border-b border-zinc-200">
                         <IconFolder className="shrink-0 text-zinc-400 w-3.5 h-3.5" />
                         <span className="text-xs font-medium text-zinc-500">{folder.path}</span>
-                        <span className="text-[0.6rem] text-zinc-400 ml-auto">{folder.note_count}</span>
+                        <span className="text-xs text-zinc-400 ml-auto">{folder.note_count}</span>
                       </div>
                       {folder.notes
                         .filter((n) => !filterLower || n.title.toLowerCase().includes(filterLower))
@@ -1870,13 +1864,13 @@ function IndexBrowser({ baseUrl, onClose }: { baseUrl: string; onClose: () => vo
                           <button
                             key={note.note_id}
                             type="button"
-                            className="flex items-center gap-2.5 w-full pl-8 pr-4 py-2 text-left hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-b-0"
+                            className="flex items-center gap-2 w-full pl-8 pr-4 py-2 text-left hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-b-0"
                             onClick={() => setDrillDown({ collection: "notes", groupId: note.note_id, groupField: "note_id", title: note.title })}
                           >
                             <IconNote className="shrink-0 text-zinc-400" />
                             <div className="flex-1 min-w-0">
                               <span className="text-sm text-zinc-800 truncate block">{note.title}</span>
-                              <span className="text-[0.68rem] text-zinc-400">{note.total_chunks} chunks</span>
+                              <span className="text-xs text-zinc-400">{note.total_chunks} chunks</span>
                             </div>
                             <IconChevron className="shrink-0 text-zinc-300" />
                           </button>
@@ -1891,7 +1885,7 @@ function IndexBrowser({ baseUrl, onClose }: { baseUrl: string; onClose: () => vo
         {/* ── Zotero Notes tree ── */}
         {!loading && tab === "zotero_notes" && viewMode === "tree" && zoteroNoteTree && (
           <div className="flex flex-col gap-2">
-            <div className="text-[0.68rem] text-zinc-400 mb-1">{zoteroNoteTree.total_notes} notes across {zoteroNoteTree.groups.length} papers</div>
+            <div className="text-xs text-zinc-400 mb-1">{zoteroNoteTree.total_notes} notes across {zoteroNoteTree.groups.length} papers</div>
             {zoteroNoteTree.groups
               .filter((g) => !filterLower || g.parent_title.toLowerCase().includes(filterLower))
               .map((group) => (
@@ -1906,11 +1900,11 @@ function IndexBrowser({ baseUrl, onClose }: { baseUrl: string; onClose: () => vo
                     <button
                       key={note.note_id}
                       type="button"
-                      className="flex items-center gap-2.5 w-full px-4 py-2.5 text-left hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-b-0"
+                      className="flex items-center gap-2 w-full px-4 py-2 text-left hover:bg-zinc-50 transition-colors border-b border-zinc-50 last:border-b-0"
                       onClick={() => setDrillDown({ collection: "zotero_notes", groupId: note.note_id, groupField: "note_id", title: `${note.parent_title} (${note.note_type})` })}
                     >
                       <span className={cn(
-                        "shrink-0 text-[0.6rem] font-bold uppercase px-1.5 py-0.5 rounded",
+                        "shrink-0 text-xs font-bold uppercase px-1.5 py-0.5 rounded",
                         note.note_type === "annotation" ? "bg-amber-50 text-amber-600" : "bg-blue-50 text-blue-600"
                       )}>
                         {note.note_type}
@@ -1945,11 +1939,11 @@ function IndexBrowser({ baseUrl, onClose }: { baseUrl: string; onClose: () => vo
 
           return (
             <div className="flex flex-col gap-2">
-              <div className="text-[0.68rem] text-zinc-400 mb-1">{flatTotal} chunks / {arr.length} sources</div>
+              <div className="text-xs text-zinc-400 mb-1">{flatTotal} chunks / {arr.length} sources</div>
               {arr.map((group) => {
                 const groupField = tab === "papers" ? "paper_id" : tab === "notes" ? "note_id" : "";
                 return (
-                  <div key={group.key} className="border border-zinc-200 rounded-xl bg-white overflow-hidden">
+                  <div key={group.key} className="border border-zinc-200 rounded-lg bg-white overflow-hidden">
                     <button
                       type="button"
                       className="flex items-center gap-3 w-full px-4 py-3 text-left cursor-pointer transition-colors hover:bg-zinc-50"
@@ -1961,7 +1955,7 @@ function IndexBrowser({ baseUrl, onClose }: { baseUrl: string; onClose: () => vo
                     >
                       <div className="flex-1 min-w-0">
                         <span className="text-sm font-semibold truncate block">{group.title}</span>
-                        <span className="text-[0.7rem] text-zinc-400 block mt-0.5">
+                        <span className="text-xs text-zinc-400 block mt-0.5">
                           {group.chunks.length} chunk{group.chunks.length !== 1 ? "s" : ""}
                           {group.meta.authors ? ` · ${String(group.meta.authors).split(";")[0].trim()}` : ""}
                           {group.meta.year ? ` · ${String(group.meta.year)}` : ""}
@@ -2114,7 +2108,7 @@ function SpeechSettingsSection({ baseUrl, configForm, setConfigForm }: { baseUrl
       {/* Status indicators */}
       <div className="flex flex-col gap-2">
         {statusItems.map((item) => (
-          <div key={item.label} className={cn("flex items-center gap-2.5 px-3 py-2 border rounded-lg text-xs", item.ready ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-500")}>
+          <div key={item.label} className={cn("flex items-center gap-2 px-3 py-2 border rounded-lg text-xs", item.ready ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-500")}>
             <span className={cn("shrink-0 w-5 h-5 grid place-items-center rounded-full", item.ready ? "bg-emerald-100" : "bg-zinc-200")}>
               {item.ready ? <IconCheck className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />}
             </span>
@@ -2145,12 +2139,12 @@ function SpeechSettingsSection({ baseUrl, configForm, setConfigForm }: { baseUrl
             <div
               key={m.id}
               className={cn(
-                "flex items-center gap-2.5 px-3 py-2.5 border rounded-xl text-xs transition-all",
+                "flex items-center gap-2 px-3 py-2 border rounded-lg text-xs transition-colors",
                 m.id === currentSTT
                   ? "border-zinc-900 bg-zinc-50 ring-1 ring-zinc-900"
                   : m.installed
                     ? "border-zinc-200 hover:border-zinc-300 cursor-pointer"
-                    : "border-zinc-100 bg-zinc-50 text-zinc-400"
+                    : "border-zinc-200 bg-zinc-50 text-zinc-400"
               )}
               onClick={() => {
                 if (m.installed) {
@@ -2162,7 +2156,7 @@ function SpeechSettingsSection({ baseUrl, configForm, setConfigForm }: { baseUrl
                 <span className={cn("font-semibold", m.installed ? "text-zinc-900" : "text-zinc-500")}>{m.label}</span>
               </div>
               {m.installed ? (
-                <span className={cn("text-[0.65rem] font-semibold px-2 py-0.5 rounded-full shrink-0", m.id === currentSTT ? "bg-zinc-900 text-white" : "bg-emerald-100 text-emerald-700")}>
+                <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full shrink-0", m.id === currentSTT ? "bg-zinc-900 text-white" : "bg-emerald-100 text-emerald-700")}>
                   {m.id === currentSTT ? "Active" : "Installed"}
                 </span>
               ) : downloadingSTT === m.id ? (
@@ -2170,7 +2164,7 @@ function SpeechSettingsSection({ baseUrl, configForm, setConfigForm }: { baseUrl
                   <div className="w-20 h-1.5 bg-zinc-200 rounded-full overflow-hidden">
                     <div className="h-full bg-zinc-500 rounded-full transition-all duration-300" style={{ width: `${Math.round((sttProgress?.progress ?? 0) * 100)}%` }} />
                   </div>
-                  <span className="text-[0.6rem] text-zinc-400 w-8 text-right">{Math.round((sttProgress?.progress ?? 0) * 100)}%</span>
+                  <span className="text-xs text-zinc-400 w-8 text-right">{Math.round((sttProgress?.progress ?? 0) * 100)}%</span>
                 </div>
               ) : (
                 <Button
@@ -2199,12 +2193,12 @@ function SpeechSettingsSection({ baseUrl, configForm, setConfigForm }: { baseUrl
             <div
               key={v.id}
               className={cn(
-                "flex items-center gap-2.5 px-3 py-2.5 border rounded-xl text-xs cursor-pointer transition-all",
+                "flex items-center gap-2 px-3 py-2 border rounded-lg text-xs cursor-pointer transition-all",
                 v.id === currentVoice
                   ? "border-zinc-900 bg-zinc-50 ring-1 ring-zinc-900"
                   : v.installed
                     ? "border-zinc-200 hover:border-zinc-300"
-                    : "border-zinc-100 bg-zinc-50 text-zinc-400"
+                    : "border-zinc-200 bg-zinc-50 text-zinc-400"
               )}
               onClick={() => {
                 if (v.installed) {
@@ -2214,10 +2208,10 @@ function SpeechSettingsSection({ baseUrl, configForm, setConfigForm }: { baseUrl
             >
               <div className="flex-1 min-w-0">
                 <span className={cn("font-semibold", v.installed ? "text-zinc-900" : "text-zinc-500")}>{v.label}</span>
-                <span className="ml-2 text-zinc-400 font-mono text-[0.65rem]">{v.id}</span>
+                <span className="ml-2 text-zinc-400 font-mono text-xs">{v.id}</span>
               </div>
               {v.installed ? (
-                <span className={cn("text-[0.65rem] font-semibold px-2 py-0.5 rounded-full shrink-0", v.id === currentVoice ? "bg-zinc-900 text-white" : "bg-emerald-100 text-emerald-700")}>
+                <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full shrink-0", v.id === currentVoice ? "bg-zinc-900 text-white" : "bg-emerald-100 text-emerald-700")}>
                   {v.id === currentVoice ? "Active" : "Installed"}
                 </span>
               ) : (
@@ -2261,56 +2255,62 @@ function SpeechSettingsSection({ baseUrl, configForm, setConfigForm }: { baseUrl
 
 type SettingsTab = "models" | "sources" | "speech" | "general";
 
-const SETTINGS_TABS: { id: SettingsTab; label: string; icon: string }[] = [
-  { id: "models", label: "Models", icon: "🤖" },
-  { id: "sources", label: "Sources", icon: "📚" },
-  { id: "speech", label: "Speech", icon: "🎙" },
-  { id: "general", label: "General", icon: "⚙️" },
+const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
+  { id: "models", label: "Models" },
+  { id: "sources", label: "Sources" },
+  { id: "speech", label: "Speech" },
+  { id: "general", label: "General" },
 ];
 
-function SettingsPanel({ configForm, setConfigForm, savedConfig, saving, onSave, onClose, baseUrl }: {
+function SettingsPanel({ configForm, setConfigForm, savedConfig, saving, onClose, baseUrl }: {
   configForm: ConfigForm;
   setConfigForm: Dispatch<SetStateAction<ConfigForm>>;
   savedConfig: PublicConfig | null;
   saving: boolean;
-  onSave: () => void;
   onClose: () => void;
   baseUrl: string;
 }) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("models");
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-200 bg-white shrink-0">
-        <h2 className="text-sm font-bold text-zinc-900">Settings</h2>
-        <button type="button" className="text-zinc-400 hover:text-zinc-900 transition-colors p-1 rounded-md hover:bg-zinc-100" onClick={onClose}><IconX /></button>
+    <div className="fixed inset-0 z-50 flex flex-col bg-white">
+      {/* Draggable top bar */}
+      <div className="flex items-center justify-between pl-[78px] pr-5 py-3 border-b border-zinc-200 shrink-0" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
+        <div className="flex items-center gap-6" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+          <button type="button" className="flex items-center gap-1 text-xs text-zinc-400 hover:text-zinc-900 transition-colors" onClick={onClose}>
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5 8.25 12l7.5-7.5" /></svg>
+            Back
+          </button>
+          <h2 className="text-sm font-bold text-zinc-900">Settings</h2>
+        </div>
+        <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+          {saving && <span className="text-xs text-zinc-400">Saving…</span>}
+          {!saving && <span className="text-xs text-zinc-300">Auto-saved</span>}
+        </div>
       </div>
 
-      {/* Tab layout: sidebar + content */}
-      <div className="flex-1 min-h-0 flex">
-        {/* Tab sidebar */}
-        <nav className="w-40 shrink-0 border-r border-zinc-100 bg-white py-2 px-2 flex flex-col gap-0.5">
-          {SETTINGS_TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              className={cn(
-                "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors text-left",
-                activeTab === tab.id ? "bg-zinc-100 text-zinc-900 font-semibold" : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-700"
-              )}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              <span className="text-sm">{tab.icon}</span>
-              {tab.label}
-            </button>
-          ))}
-        </nav>
+      {/* Tab bar */}
+      <div className="flex items-center gap-1 px-6 py-1.5 border-b border-zinc-200 bg-zinc-50 shrink-0">
+        {SETTINGS_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={cn(
+              "px-3.5 py-1.5 rounded-md text-xs font-medium transition-colors",
+              activeTab === tab.id ? "bg-white text-zinc-900 shadow-sm border border-zinc-200" : "text-zinc-500 hover:text-zinc-700 hover:bg-zinc-50"
+            )}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-        {/* Tab content */}
-        <div className="flex-1 min-h-0 overflow-y-auto p-5">
+      {/* Content */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="max-w-xl mx-auto py-8 px-6">
           {activeTab === "models" && (
-            <div className="flex flex-col gap-4 max-w-lg">
+            <div className="flex flex-col gap-4">
               <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Language Model</h3>
               <Field label="Provider">
                 <Select value={configForm.anthropic.provider} onChange={(e) => {
@@ -2360,25 +2360,23 @@ function SettingsPanel({ configForm, setConfigForm, savedConfig, saving, onSave,
           )}
 
           {activeTab === "sources" && (
-            <div className="flex flex-col gap-6 max-w-lg">
-              {/* Zotero */}
+            <div className="flex flex-col gap-6">
               <section className="flex flex-col gap-3">
                 <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Zotero</h3>
                 <Field label="Storage folder">
-                  <PathPicker label="Storage" value={configForm.zotero.storage_path} placeholder="Click to select..." onPick={async () => { const p = await window.jarvis.pickDirectory(); if (p) setConfigForm((c) => ({ ...c, zotero: { ...c.zotero, storage_path: p } })); }} />
+                  <PathPicker label="Storage" value={configForm.zotero.storage_path} placeholder="Click to select..." onPick={async () => { const p = await window.roxanne.pickDirectory(); if (p) setConfigForm((c) => ({ ...c, zotero: { ...c.zotero, storage_path: p } })); }} />
                 </Field>
                 <Field label="Database">
-                  <PathPicker label="Database" value={configForm.zotero.database_path} placeholder="Click to select..." onPick={async () => { const p = await window.jarvis.pickFile([{ name: "SQLite", extensions: ["sqlite", "sqlite3", "db"] }]); if (p) setConfigForm((c) => ({ ...c, zotero: { ...c.zotero, database_path: p } })); }} />
+                  <PathPicker label="Database" value={configForm.zotero.database_path} placeholder="Click to select..." onPick={async () => { const p = await window.roxanne.pickFile([{ name: "SQLite", extensions: ["sqlite", "sqlite3", "db"] }]); if (p) setConfigForm((c) => ({ ...c, zotero: { ...c.zotero, database_path: p } })); }} />
                 </Field>
               </section>
 
               <Separator />
 
-              {/* Obsidian */}
               <section className="flex flex-col gap-3">
                 <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Obsidian Vaults</h3>
                 {configForm.obsidian_vaults.map((vault, i) => (
-                  <div key={vault.id} className="flex flex-col gap-2.5 p-3.5 border border-zinc-200 rounded-xl bg-zinc-50/50">
+                  <div key={vault.id} className="flex flex-col gap-2 p-3 border border-zinc-200 rounded-lg bg-zinc-50">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-semibold text-zinc-400 uppercase">Vault {i + 1}</span>
                       {configForm.obsidian_vaults.length > 1 && (
@@ -2386,7 +2384,7 @@ function SettingsPanel({ configForm, setConfigForm, savedConfig, saving, onSave,
                       )}
                     </div>
                     <PathPicker label="Folder" value={vault.path} placeholder="Select vault..." onPick={async () => {
-                      const p = await window.jarvis.pickDirectory();
+                      const p = await window.roxanne.pickDirectory();
                       if (p) {
                         const name = p.split("/").pop() || "";
                         setConfigForm((c) => ({ ...c, obsidian_vaults: c.obsidian_vaults.map((v) => v.id === vault.id ? { ...v, path: p, name: v.name || name } : v) }));
@@ -2403,13 +2401,11 @@ function SettingsPanel({ configForm, setConfigForm, savedConfig, saving, onSave,
           )}
 
           {activeTab === "speech" && (
-            <div className="max-w-lg">
-              <SpeechSettingsSection baseUrl={baseUrl} configForm={configForm} setConfigForm={setConfigForm} />
-            </div>
+            <SpeechSettingsSection baseUrl={baseUrl} configForm={configForm} setConfigForm={setConfigForm} />
           )}
 
           {activeTab === "general" && (
-            <div className="flex flex-col gap-4 max-w-lg">
+            <div className="flex flex-col gap-4">
               <h3 className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Embeddings</h3>
               <Field label="Provider">
                 <Select value={configForm.embeddings.provider} onChange={(e) => setConfigForm((c) => ({ ...c, embeddings: { ...c.embeddings, provider: e.target.value as "fastembed" | "openai" } }))}>
@@ -2423,11 +2419,6 @@ function SettingsPanel({ configForm, setConfigForm, savedConfig, saving, onSave,
             </div>
           )}
         </div>
-      </div>
-
-      {/* Footer */}
-      <div className="shrink-0 px-5 py-3 border-t border-zinc-200 bg-white flex justify-end">
-        <Button onClick={onSave} disabled={saving}>{saving ? "Saving..." : "Save settings"}</Button>
       </div>
     </div>
   );
@@ -2462,7 +2453,12 @@ export function App() {
   const [saving, setSaving] = useState(false);
   const [setupNeed, setSetupNeed] = useState<SetupNeed>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
-  const [activeConvId, setActiveConvId] = useState<string | null>(null);
+  const [activeConvId, _setActiveConvId] = useState<string | null>(null);
+  const activeConvIdRef = useRef<string | null>(null);
+  function setActiveConvId(id: string | null) {
+    activeConvIdRef.current = id;
+    _setActiveConvId(id);
+  }
 
   /** Open setup modal AND stop any active conversation/voice */
   function triggerSetup(need: SetupNeed) {
@@ -2484,6 +2480,10 @@ export function App() {
   const voiceAnalyserRef = useRef<AnalyserNode | null>(null);
   const voiceAnimFrameRef = useRef<number | null>(null);
 
+  // Wake-word state: "listening" = passive (waiting for wake word), "active" = transcribing user command
+  const [voiceState, setVoiceState] = useState<"listening" | "active">("listening");
+  const voiceStateRef = useRef<"listening" | "active">("listening");
+
   const { toasts, addToast, dismissToast } = useToasts();
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
@@ -2498,7 +2498,7 @@ export function App() {
     let cancelled = false;
     async function bootstrap() {
       try {
-        const rt = await window.jarvis.getRuntimeInfo();
+        const rt = await window.roxanne.getRuntimeInfo();
         if (cancelled) return;
         setRuntime(rt);
         setBaseUrl(rt.backendBaseUrl);
@@ -2597,10 +2597,15 @@ export function App() {
 
   /* ---- Conversations ---- */
 
-  async function fetchConversations() {
+  async function fetchConversations(autoSelect = false) {
     if (!baseUrl) return;
     try {
-      setConversations(await listConversations(baseUrl));
+      const convs = await listConversations(baseUrl);
+      setConversations(convs);
+      // Auto-select most recent conversation if nothing is active
+      if (autoSelect && !activeConvId && convs.length > 0) {
+        void switchConversation(convs[0].id);
+      }
     } catch {}
   }
 
@@ -2660,20 +2665,59 @@ export function App() {
   useEffect(() => {
     if (!showSetup && !loading && baseUrl) {
       void fetchStats();
-      void fetchConversations();
+      void fetchConversations(true); // auto-select most recent conversation
     }
   }, [showSetup, loading, baseUrl]);
 
-  async function triggerIndex(scope: "all" | "papers" | "notes") {
+  const [indexEvent, setIndexEvent] = useState<IndexEvent | null>(null);
+  const [indexRunning, setIndexRunning] = useState(false);
+
+  // Poll auto-index status — fast while indexing, slow when idle
+  const indexRunningRef = useRef(false);
+  useEffect(() => {
+    indexRunningRef.current = indexRunning;
+  }, [indexRunning]);
+
+  useEffect(() => {
     if (!baseUrl) return;
-    setBusyLabel(`Indexing ${scope}...`);
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+
+    const poll = async () => {
+      if (cancelled) return;
+      try {
+        const act = await getIndexActivity(baseUrl);
+        setIndexRunning(act.running);
+        if (act.last_event) setIndexEvent(act.last_event);
+      } catch {}
+      if (!cancelled) {
+        const delay = indexRunningRef.current ? 2000 : 30000;
+        timer = setTimeout(poll, delay);
+      }
+    };
+    void poll();
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
+  }, [baseUrl]);
+
+  async function triggerIndex(scope: "all" | "papers" | "notes") {
+    if (!baseUrl || indexRunning) return;
+    setIndexRunning(true);
+    setIndexEvent(null);
     try {
-      await runIndex(baseUrl, scope);
+      if (scope === "all") {
+        await runIndexStreaming(baseUrl, (ev) => setIndexEvent(ev));
+      } else {
+        setBusyLabel(`Indexing ${scope}...`);
+        await runIndex(baseUrl, scope);
+        setBusyLabel("");
+      }
       addToast("success", "Indexing complete", `${scope} re-indexed successfully.`);
       await fetchStats();
     } catch (error) {
       addToast("error", "Index error", error instanceof Error ? error.message : String(error));
     } finally {
+      setIndexRunning(false);
+      setIndexEvent(null);
       setBusyLabel("");
     }
   }
@@ -2695,7 +2739,7 @@ export function App() {
     setIsSending(true);
 
     // Auto-create a conversation if there isn't one active
-    let convId = activeConvId;
+    let convId = activeConvIdRef.current;
     if (!convId) {
       try {
         const conv = await createConversation(baseUrl, prompt.slice(0, 80));
@@ -3011,6 +3055,8 @@ export function App() {
     voiceModeRef.current = true;
     setVoiceMode(true);
     setAutoSpeak(true); // Voice mode = always speak responses
+    voiceStateRef.current = "listening";
+    setVoiceState("listening");
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -3048,45 +3094,122 @@ export function App() {
         setIsRecording(true);
       };
 
-      // Track accumulated text from Vosk finals (phrase-level) vs user-triggered END finals
+      // Wake-word detection + command accumulation
+      const WAKE_WORDS = ["roxanne", "hey roxanne", "ok roxanne", "okay roxanne"];
       let accumulatedText = "";
       let sendTimer: ReturnType<typeof setTimeout> | null = null;
+
+      /** Check if text contains a wake word, return text after the wake word */
+      function extractAfterWakeWord(text: string): string | null {
+        const lower = text.toLowerCase().trim();
+        for (const ww of WAKE_WORDS) {
+          const idx = lower.indexOf(ww);
+          if (idx !== -1) {
+            return text.slice(idx + ww.length).trim();
+          }
+        }
+        return null;
+      }
 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
+          const currentState = voiceStateRef.current;
+
           if (data.type === "interim") {
-            // Show real-time partial transcript (accumulated + current partial)
-            setLiveTranscript((accumulatedText + " " + (data.text || "")).trim());
+            const partial = (data.text || "").trim();
+            if (currentState === "listening") {
+              // In listening mode, show a subtle hint if wake word is partially detected
+              const lower = partial.toLowerCase();
+              const hasWake = WAKE_WORDS.some((ww) => lower.includes(ww));
+              if (hasWake) {
+                const after = extractAfterWakeWord(partial);
+                setLiveTranscript(after || "…");
+              } else {
+                setLiveTranscript(""); // Don't show passive transcription
+              }
+            } else {
+              // Active mode — show full transcription
+              setLiveTranscript((accumulatedText + " " + partial).trim());
+            }
           } else if (data.type === "final") {
             const text = (data.text || "").trim();
-            if (text) {
+            if (!text) return;
+
+            // Always check for HALT to exit voice mode
+            if (text.toLowerCase().replace(/[^a-z]/g, "") === "halt" || text.toLowerCase().replace(/[^a-z]/g, "") === "stop") {
+              if (sendTimer) clearTimeout(sendTimer);
+              setLiveTranscript("");
+              accumulatedText = "";
+              stopVoiceConversation();
+              return;
+            }
+
+            if (currentState === "listening") {
+              // Check if this phrase contains the wake word
+              const afterWake = extractAfterWakeWord(text);
+              if (afterWake !== null) {
+                // Activate! Transition to active state
+                voiceStateRef.current = "active";
+                setVoiceState("active");
+                accumulatedText = afterWake;
+                setLiveTranscript(afterWake || "Listening…");
+
+                // If there's already text after the wake word, start the send timer
+                if (afterWake) {
+                  if (sendTimer) clearTimeout(sendTimer);
+                  sendTimer = setTimeout(() => {
+                    const trimmed = accumulatedText.trim();
+                    if (!trimmed || !voiceModeRef.current) {
+                      // Nothing said after wake word — go back to listening
+                      voiceStateRef.current = "listening";
+                      setVoiceState("listening");
+                      setLiveTranscript("");
+                      accumulatedText = "";
+                      return;
+                    }
+                    setLiveTranscript("");
+                    setIsTranscribing(false);
+                    handleSend(trimmed);
+                    accumulatedText = "";
+                    // Return to listening state for next wake word
+                    voiceStateRef.current = "listening";
+                    setVoiceState("listening");
+                    if (ws.readyState === WebSocket.OPEN) ws.send("RESET");
+                  }, 1500);
+                } else {
+                  // Wake word only, no command yet — wait for more speech
+                  if (sendTimer) clearTimeout(sendTimer);
+                  sendTimer = setTimeout(() => {
+                    // Timeout with no command — go back to listening
+                    if (!accumulatedText.trim()) {
+                      voiceStateRef.current = "listening";
+                      setVoiceState("listening");
+                      setLiveTranscript("");
+                      accumulatedText = "";
+                    }
+                  }, 5000); // 5s grace period after just wake word
+                }
+              }
+              // No wake word → ignore (passive listening)
+            } else {
+              // Active state — accumulate command text
               accumulatedText = (accumulatedText + " " + text).trim();
               setLiveTranscript(accumulatedText);
 
-              // Reset the silence send timer — user might keep talking
               if (sendTimer) clearTimeout(sendTimer);
-              // After 1.5s of no new finals, send the accumulated text
               sendTimer = setTimeout(() => {
                 const trimmed = accumulatedText.trim();
                 if (!trimmed || !voiceModeRef.current) return;
-
-                // Check for HALT keyword — stop voice conversation
-                if (trimmed.toLowerCase().replace(/[^a-z]/g, "") === "halt") {
-                  setLiveTranscript("");
-                  accumulatedText = "";
-                  stopVoiceConversation();
-                  return;
-                }
 
                 setLiveTranscript("");
                 setIsTranscribing(false);
                 handleSend(trimmed);
                 accumulatedText = "";
-                // Tell server to reset recognizer for next utterance
-                if (ws.readyState === WebSocket.OPEN) {
-                  ws.send("RESET");
-                }
+                // Return to listening state
+                voiceStateRef.current = "listening";
+                setVoiceState("listening");
+                if (ws.readyState === WebSocket.OPEN) ws.send("RESET");
               }, 1500);
             }
           } else if (data.type === "error") {
@@ -3129,6 +3252,8 @@ export function App() {
     setAutoSpeak(false);
     setIsRecording(false);
     setLiveTranscript("");
+    voiceStateRef.current = "listening";
+    setVoiceState("listening");
 
     if (voiceAnimFrameRef.current) {
       cancelAnimationFrame(voiceAnimFrameRef.current);
@@ -3187,14 +3312,24 @@ export function App() {
     try {
       const nextConfig = await saveConfig(baseUrl, sanitizeConfig(configForm));
       setSavedConfig(nextConfig);
-      setConfigForm(publicToForm(nextConfig));
-      addToast("success", "Settings saved", "Your configuration has been updated.");
+      // Don't overwrite configForm here — user may still be editing
     } catch (error) {
       addToast("error", "Save error", error instanceof Error ? error.message : String(error));
     } finally {
       setSaving(false);
     }
   }
+
+  // Auto-save settings with debounce when configForm changes while settings panel is open
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (showPanel !== "settings" || !baseUrl) return;
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      void saveSettingsFromPanel();
+    }, 800);
+    return () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); };
+  }, [configForm, showPanel]);
 
   /* ---- Loading / Error ---- */
 
@@ -3203,7 +3338,7 @@ export function App() {
       <div className="h-full grid place-items-center bg-zinc-50">
         <div className="flex flex-col items-center gap-3 animate-[fade-in_400ms_ease-out_both]">
           <div className="w-8 h-8 border-[3px] border-zinc-200 border-t-zinc-900 rounded-full animate-spin" />
-          <p className="text-sm text-zinc-500">Starting Jarvis...</p>
+          <p className="text-sm text-zinc-500">Starting Roxanne...</p>
         </div>
       </div>
     );
@@ -3231,7 +3366,7 @@ export function App() {
         <ToastContainer toasts={toasts} onDismiss={dismissToast} />
         <div className="w-full max-w-[540px] flex flex-col gap-6 animate-[fade-in_300ms_ease-out_both]">
           <StepDots current={wizardStep} total={TOTAL_STEPS} />
-          <div className="bg-white border border-zinc-200 rounded-2xl shadow-lg p-8 min-h-[340px] flex flex-col">
+          <div className="bg-white border border-zinc-200 rounded-lg shadow-sm p-8 min-h-[340px] flex flex-col">
             {wizardStep === 0 && <WelcomeStep onNext={nextWizardStep} />}
             {wizardStep === 1 && <AnthropicStep configForm={configForm} setConfigForm={setConfigForm} savedConfig={savedConfig} baseUrl={baseUrl} />}
             {wizardStep === 2 && <ZoteroStep configForm={configForm} setConfigForm={setConfigForm} baseUrl={baseUrl} />}
@@ -3257,37 +3392,45 @@ export function App() {
   /* ---- Workspace ---- */
 
   return (
-    <div className="h-full overflow-hidden grid grid-cols-[260px_minmax(0,1fr)]">
+    <div className="h-full overflow-hidden grid grid-cols-[240px_minmax(0,1fr)]">
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
       <SetupModal need={setupNeed} baseUrl={baseUrl} configForm={configForm} setConfigForm={setConfigForm} onClose={() => setSetupNeed(null)} />
 
       {/* ── Sidebar ── */}
-      <aside className="flex flex-col h-full overflow-hidden border-r border-zinc-200 bg-white">
-        {/* Sidebar header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100">
-          <span className="text-sm font-bold tracking-tight text-zinc-900">Jarvis</span>
-          <Badge tone={busyLabel ? "muted" : "success"}>{busyLabel || "Ready"}</Badge>
+      <aside className="flex flex-col h-full overflow-hidden border-r border-zinc-200 bg-zinc-50">
+        {/* Draggable title area — replaces native title bar */}
+        <div className="flex items-center justify-between pl-[78px] pr-3 pt-3 pb-2 shrink-0" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
+          <span className="text-xs font-bold tracking-tight text-zinc-900 select-none">Roxanne</span>
+          {busyLabel ? (
+            <Badge tone="muted">{busyLabel}</Badge>
+          ) : (
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0" title="Ready" />
+          )}
         </div>
 
-        {/* New chat + Conversations */}
-        <div className="px-3 py-2 border-b border-zinc-100">
+        {/* New chat button */}
+        <div className="px-3 pb-1" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
           <button
             type="button"
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 text-white text-xs font-semibold hover:bg-zinc-800 transition-colors mb-2"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-zinc-900 text-white text-xs font-semibold hover:bg-zinc-800 transition-colors"
             onClick={() => void startNewConversation()}
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
             New chat
           </button>
-          {conversations.length > 0 && (
-            <div className="flex flex-col gap-0.5 max-h-[180px] overflow-y-auto">
+        </div>
+
+        {/* Conversations */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-1.5">
+          {conversations.length > 0 ? (
+            <div className="flex flex-col gap-0.5">
               {conversations.map((conv) => (
                 <div
                   key={conv.id}
                   className={cn(
-                    "group flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs cursor-pointer transition-colors",
+                    "group flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs cursor-pointer transition-colors",
                     activeConvId === conv.id
-                      ? "bg-zinc-100 text-zinc-900 font-semibold"
+                      ? "bg-white text-zinc-900 font-semibold shadow-sm border border-zinc-200"
                       : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-700"
                   )}
                   onClick={() => void switchConversation(conv.id)}
@@ -3296,7 +3439,7 @@ export function App() {
                   <span className="flex-1 truncate">{conv.title}</span>
                   <button
                     type="button"
-                    className="shrink-0 opacity-0 group-hover:opacity-60 hover:!opacity-100 text-zinc-400 hover:text-red-500 transition-all p-0.5"
+                    className="shrink-0 opacity-0 group-hover:opacity-60 hover:!opacity-100 text-zinc-400 hover:text-red-500 transition-colors p-0.5"
                     onClick={(e) => { e.stopPropagation(); void handleDeleteConversation(conv.id); }}
                   >
                     <IconX className="w-3 h-3" />
@@ -3304,139 +3447,94 @@ export function App() {
                 </div>
               ))}
             </div>
+          ) : (
+            <p className="text-xs text-zinc-400 text-center py-6">No conversations yet</p>
           )}
         </div>
 
-        {/* Index stats */}
-        <div className="px-4 py-3 border-b border-zinc-100">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[0.68rem] font-bold text-zinc-400 uppercase tracking-wider">Index</span>
+        {/* Index status + actions */}
+        <div className="px-3 py-2 border-t border-zinc-200 flex flex-col gap-1">
+          {/* Index status indicator */}
+          {indexRunning && indexEvent ? (
+            <div className="flex flex-col gap-1 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200">
+              <div className="flex items-center gap-2">
+                <svg className="w-3.5 h-3.5 text-amber-500 animate-spin shrink-0" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="31.4 31.4" strokeLinecap="round" /></svg>
+                <span className="text-xs font-medium text-amber-700 truncate">{indexEvent.current_file || indexEvent.detail}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-1 bg-amber-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-amber-500 rounded-full transition-all duration-300" style={{ width: `${Math.round(indexEvent.progress * 100)}%` }} />
+                </div>
+                <span className="text-xs text-amber-600 font-mono shrink-0">
+                  {indexEvent.done}/{indexEvent.total_files}
+                </span>
+              </div>
+            </div>
+          ) : (
             <button
               type="button"
-              className="text-[0.68rem] font-semibold text-zinc-400 uppercase tracking-wider hover:text-zinc-900 transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900 transition-colors"
               onClick={() => setShowPanel(showPanel === "index" ? "" : "index")}
             >
-              Browse
+              <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m5.231 13.481L15 17.25m-4.5-15H5.625c-.621 0-1.125.504-1.125 1.125v16.5c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Zm3.75 11.625a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>
+              <span className="font-medium">Index</span>
+              <span className="ml-auto text-xs text-zinc-400 font-mono">
+                {indexStats ? `${indexStats.papers ?? 0}p · ${indexStats.notes ?? 0}n` : "—"}
+              </span>
             </button>
-          </div>
-          <div className="grid grid-cols-4 gap-1">
-            {([
-              ["papers", indexStats?.papers],
-              ["notes", indexStats?.notes],
-              ["z-notes", indexStats?.zotero_notes],
-              ["mem", indexStats?.memories],
-            ] as const).map(([label, count]) => (
-              <button
-                key={label}
-                type="button"
-                className="flex flex-col items-center gap-0.5 py-2 rounded-lg bg-zinc-50 hover:bg-zinc-100 transition-colors"
-                onClick={() => setShowPanel("index")}
-              >
-                <span className="text-base font-bold text-zinc-900">{count ?? "—"}</span>
-                <span className="text-[0.6rem] font-medium text-zinc-400 uppercase">{label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="px-4 py-2.5 border-b border-zinc-100 flex gap-1.5 flex-wrap">
-          <Button size="sm" variant="outline" disabled={!!busyLabel} onClick={() => void triggerIndex("all")} className="text-xs h-7">
-            <IconRefresh className="w-3 h-3 mr-1" /> Reindex
-          </Button>
-          <Button size="sm" variant="outline" disabled={!!busyLabel} onClick={() => void triggerIndex("papers")} className="text-xs h-7">Papers</Button>
-          <Button size="sm" variant="outline" disabled={!!busyLabel} onClick={() => void triggerIndex("notes")} className="text-xs h-7">Notes</Button>
-        </div>
-
-        {/* Papers list */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2">
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[0.68rem] font-bold text-zinc-400 uppercase tracking-wider">Papers</span>
-            <Badge tone="muted">{papers.length}</Badge>
-          </div>
-          {papers.length ? (
-            <div className="flex flex-col gap-0.5">
-              {papers.map((p) => (
-                <button
-                  key={p.paper_id}
-                  type="button"
-                  className="flex flex-col px-2.5 py-2 rounded-lg text-left hover:bg-zinc-50 transition-colors"
-                  onClick={() => void window.jarvis.openPath(p.file_path)}
-                >
-                  <span className="text-xs font-semibold text-zinc-900 truncate">{p.title}</span>
-                  <span className="text-[0.68rem] text-zinc-400 truncate">{p.file_path.split("/").pop()}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-zinc-400 py-2">Papers appear here after search.</p>
           )}
-
-          <Separator className="my-2" />
-
-          <div className="flex items-center justify-between mb-1.5">
-            <span className="text-[0.68rem] font-bold text-zinc-400 uppercase tracking-wider">Notes</span>
-            <Badge tone="muted">{notes.length}</Badge>
-          </div>
-          {notes.length ? (
-            <div className="flex flex-col gap-0.5">
-              {notes.map((n) => (
-                <button
-                  key={n.note_id}
-                  type="button"
-                  className="flex flex-col px-2.5 py-2 rounded-lg text-left hover:bg-zinc-50 transition-colors"
-                  onClick={() => void window.jarvis.openPath(n.absolute_path)}
-                >
-                  <span className="text-xs font-semibold text-zinc-900 truncate">{n.title}</span>
-                  <span className="text-[0.68rem] text-zinc-400 truncate">{n.vault_name} / {n.relative_path}</span>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-zinc-400 py-2">Notes appear here after search.</p>
-          )}
-        </div>
-
-        {/* Settings button */}
-        <div className="px-4 py-2.5 border-t border-zinc-100">
           <button
             type="button"
             className={cn(
-              "flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-              showPanel === "settings" ? "bg-zinc-100 text-zinc-900" : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
+              "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors w-full",
+              "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900",
+              indexRunning && "opacity-50 pointer-events-none"
+            )}
+            disabled={indexRunning}
+            onClick={() => void triggerIndex("all")}
+          >
+            <IconRefresh className={cn("w-3.5 h-3.5", indexRunning && "animate-spin")} />
+            {indexRunning ? "Indexing…" : "Reindex all"}
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium transition-colors w-full",
+              showPanel === "settings" ? "bg-white text-zinc-900 shadow-sm border border-zinc-200" : "text-zinc-500 hover:bg-zinc-50 hover:text-zinc-900"
             )}
             onClick={() => setShowPanel(showPanel === "settings" ? "" : "settings")}
           >
-            <IconSettings className="w-4 h-4" />
+            <IconSettings className="w-3.5 h-3.5" />
             Settings
           </button>
         </div>
       </aside>
 
+      {/* ── Settings (full-screen overlay) ── */}
+      {showPanel === "settings" && (
+        <SettingsPanel
+          configForm={configForm}
+          setConfigForm={setConfigForm}
+          savedConfig={savedConfig}
+          saving={saving}
+          onClose={() => setShowPanel("")}
+          baseUrl={baseUrl}
+        />
+      )}
+
       {/* ── Main ── */}
-      <main className="flex flex-col h-full min-h-0 bg-zinc-50">
+      <main className="flex flex-col h-full min-h-0 bg-white">
         {showPanel === "index" ? (
           <IndexBrowser baseUrl={baseUrl} onClose={() => setShowPanel("")} />
-        ) : showPanel === "settings" ? (
-          <SettingsPanel
-            configForm={configForm}
-            setConfigForm={setConfigForm}
-            savedConfig={savedConfig}
-            saving={saving}
-            onSave={() => void saveSettingsFromPanel()}
-            onClose={() => setShowPanel("")}
-            baseUrl={baseUrl}
-          />
         ) : (
           <>
-            {/* Chat header */}
-            <div className="flex items-center justify-between px-5 py-2.5 border-b border-zinc-200 bg-white shrink-0">
-              <div className="flex items-center gap-2.5">
-                <span className="text-sm font-semibold text-zinc-900">{savedConfig?.anthropic.model || "Model"}</span>
+            {/* Slim inline header — draggable, no big bar feel */}
+            <div className="flex items-center justify-between px-5 py-2 shrink-0" style={{ WebkitAppRegion: "drag" } as React.CSSProperties}>
+              <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
+                <span className="text-xs font-medium text-zinc-400">{savedConfig?.anthropic.model || "Model"}</span>
                 {isSending && <Badge tone="muted">Thinking...</Badge>}
               </div>
-              <div className="flex items-center gap-3">
-                {/* Speech status indicators */}
+              <div className="flex items-center gap-2" style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}>
                 {isRecording && <RecordingPill />}
                 {isTranscribing && <TranscribingPill />}
                 {isSpeaking && (
@@ -3444,19 +3542,25 @@ export function App() {
                     <SpeakingPill />
                   </button>
                 )}
-                {/* Voice conversation mode toggle */}
                 <button
                   type="button"
                   className={cn(
-                    "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border",
-                    voiceMode
+                    "flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors border",
+                    voiceMode && voiceState === "active"
                       ? "bg-emerald-50 border-emerald-300 text-emerald-700"
-                      : "bg-white border-zinc-200 text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
+                      : voiceMode
+                        ? "bg-amber-50 border-amber-300 text-amber-700"
+                        : "bg-white border-zinc-200 text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
                   )}
                   onClick={() => voiceMode ? stopVoiceConversation() : void startVoiceConversation()}
                 >
                   <IconMic className="w-3.5 h-3.5" />
-                  {voiceMode ? "End conversation" : "Voice chat"}
+                  {voiceMode
+                    ? voiceState === "active"
+                      ? "Listening…"
+                      : "Say \"Roxanne\" to start"
+                    : "Voice chat"
+                  }
                 </button>
                 {/* Auto-speak toggle */}
                 <div className="flex items-center gap-2">
@@ -3470,9 +3574,9 @@ export function App() {
             <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4 flex flex-col gap-3">
               {messages.length === 0 && (
                 <div className="flex-1 flex flex-col items-center justify-center text-center gap-2">
-                  <h2 className="text-base font-semibold text-zinc-900">Ask Jarvis anything about your research</h2>
+                  <h2 className="text-base font-semibold text-zinc-900">Ask Roxanne anything about your research</h2>
                   <p className="text-sm text-zinc-400 max-w-[440px] leading-relaxed">
-                    Search your Zotero papers, look through notes, or ask Jarvis to summarize a paper.
+                    Search your Zotero papers, look through notes, or ask Roxanne to summarize a paper.
                   </p>
                 </div>
               )}
@@ -3485,6 +3589,8 @@ export function App() {
                     return <ToolStepsGroup key={`tg-${gi}`} steps={group.steps} isLatest={isLatest && isSending} />;
                   }
                   const msg = group.msg;
+                  // Don't render empty assistant bubbles when not actively streaming
+                  if (msg.role === "assistant" && !msg.content && !isSending) return null;
                   return (
                     <div
                       key={msg.id}
@@ -3522,9 +3628,9 @@ export function App() {
             <div className="shrink-0 px-5 py-3 border-t border-zinc-200 bg-white">
               {voiceMode ? (
                 <div className="flex flex-col gap-2 py-2">
-                  {/* Live transcript display */}
-                  {liveTranscript && (
-                    <div className="px-3 py-2 mx-auto max-w-[600px] bg-zinc-50 border border-zinc-200 rounded-xl animate-[fade-in_150ms_ease-out_both]">
+                  {/* Live transcript display — only in active mode */}
+                  {voiceState === "active" && liveTranscript && liveTranscript !== "…" && liveTranscript !== "Listening…" && (
+                    <div className="px-3 py-2 mx-auto max-w-[600px] bg-zinc-50 border border-zinc-200 rounded-lg animate-[fade-in_150ms_ease-out_both]">
                       <p className="text-sm text-zinc-700 italic leading-relaxed">&ldquo;{liveTranscript}&rdquo;</p>
                     </div>
                   )}
@@ -3532,16 +3638,26 @@ export function App() {
                   <div className="flex items-center justify-center gap-3">
                     <div className={cn(
                       "flex items-center gap-2 px-4 py-2 rounded-full border transition-all",
-                      isRecording && !isTranscribing ? "bg-emerald-50 border-emerald-200" : isTranscribing ? "bg-amber-50 border-amber-200" : isSending ? "bg-blue-50 border-blue-200" : isSpeaking ? "bg-blue-50 border-blue-200" : "bg-zinc-50 border-zinc-200"
+                      voiceState === "active" ? "bg-emerald-50 border-emerald-200" : isSending ? "bg-blue-50 border-blue-200" : isSpeaking ? "bg-blue-50 border-blue-200" : "bg-amber-50 border-amber-200"
                     )}>
-                      {isRecording && !isTranscribing && (
+                      {voiceState === "listening" && !isSending && !isSpeaking && (
+                        <>
+                          <span className="relative flex h-2.5 w-2.5">
+                            <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-amber-400" />
+                          </span>
+                          <span className="text-xs font-medium text-amber-700">
+                            Say &ldquo;Roxanne&rdquo; to ask a question
+                          </span>
+                        </>
+                      )}
+                      {voiceState === "active" && !isSending && (
                         <>
                           <span className="relative flex h-2.5 w-2.5">
                             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
                             <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500" />
                           </span>
                           <span className="text-xs font-medium text-emerald-700">
-                            {liveTranscript ? "Listening..." : "Speak now..."}
+                            Listening…
                           </span>
                         </>
                       )}
@@ -3583,7 +3699,7 @@ export function App() {
                 /* Chat disabled — setup incomplete */
                 <button
                   type="button"
-                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-sm font-medium hover:bg-amber-100 transition-colors"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm font-medium hover:bg-amber-100 transition-colors"
                   onClick={() => {
                     const provider = savedConfig?.anthropic?.provider || configForm.anthropic.provider;
                     if (provider === "ollama") triggerSetup("ollama");
@@ -3599,7 +3715,7 @@ export function App() {
                   <button
                     type="button"
                     className={cn(
-                      "shrink-0 w-9 h-9 grid place-items-center rounded-xl border transition-colors",
+                      "shrink-0 w-9 h-9 grid place-items-center rounded-lg border transition-colors",
                       isRecording
                         ? "bg-red-50 border-red-300 text-red-600"
                         : "bg-white border-zinc-200 text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
@@ -3612,8 +3728,8 @@ export function App() {
                   {/* Text input */}
                   <div className="flex-1 min-w-0">
                     <Textarea
-                      className="min-h-[40px] max-h-[120px] resize-none rounded-xl text-sm"
-                      placeholder="Ask Jarvis..."
+                      className="min-h-[40px] max-h-[120px] resize-none rounded-lg text-sm"
+                      placeholder="Ask Roxanne..."
                       rows={1}
                       value={draft}
                       onKeyDown={(e) => {
@@ -3629,7 +3745,7 @@ export function App() {
                   <button
                     type="button"
                     className={cn(
-                      "shrink-0 w-9 h-9 grid place-items-center rounded-xl transition-colors",
+                      "shrink-0 w-9 h-9 grid place-items-center rounded-lg transition-colors",
                       draft.trim() && !isSending
                         ? "bg-zinc-900 text-white hover:bg-zinc-800"
                         : "bg-zinc-100 text-zinc-400 cursor-not-allowed"

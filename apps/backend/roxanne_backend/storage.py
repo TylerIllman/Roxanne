@@ -9,17 +9,17 @@ from typing import Any, Dict, Optional
 
 
 def default_app_home() -> Path:
-    configured = os.getenv("JARVIS_HOME")
+    configured = os.getenv("ROXANNE_HOME")
     if configured:
         return Path(configured).expanduser()
 
     home = Path.home()
     system = platform.system().lower()
     if system == "darwin":
-        return home / "Library" / "Application Support" / "JarvisAssistant"
+        return home / "Library" / "Application Support" / "RoxanneAssistant"
     if system == "windows":
-        return home / "AppData" / "Roaming" / "JarvisAssistant"
-    return home / ".jarvis-assistant"
+        return home / "AppData" / "Roaming" / "RoxanneAssistant"
+    return home / ".roxanne-assistant"
 
 
 class AppPaths:

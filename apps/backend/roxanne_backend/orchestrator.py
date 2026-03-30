@@ -7,9 +7,9 @@ from typing import Any, AsyncIterator, Callable, Dict, List, Optional
 import anyio
 from anthropic import Anthropic
 
-from jarvis_backend.models import AppConfig, ChatRequest, LLMConfig, ToolEvent
-from jarvis_backend.retrieval import SessionMemoryStore
-from jarvis_backend.tools.registry import ToolRegistry
+from roxanne_backend.models import AppConfig, ChatRequest, LLMConfig, ToolEvent
+from roxanne_backend.retrieval import SessionMemoryStore
+from roxanne_backend.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ class ChatOrchestrator:
             # Auto-start Ollama server if needed
             if llm.provider == "ollama":
                 try:
-                    from jarvis_backend.ollama_manager import ollama_status, start_ollama_server
+                    from roxanne_backend.ollama_manager import ollama_status, start_ollama_server
                     status = await anyio.to_thread.run_sync(ollama_status)
                     if status["installed"] and not status["running"]:
                         yield self._encode(ToolEvent(type="status", message="Starting Ollama server..."))
@@ -433,15 +433,23 @@ class ChatOrchestrator:
                 "  Bad: 'I have completed my search and found several relevant results…'\n"
             )
 
+        typing_instructions = ""
+        if not voice_mode:
+            typing_instructions = (
+                "\n\nTYPING MODE — detailed responses:\n"
+                "- Give thorough, well-structured answers with markdown formatting.\n"
+                "- Use headings, bullet points, tables, and code blocks where helpful.\n"
+                "- For math/equations, ALWAYS use LaTeX: inline $x^2$ or display blocks $$\\sum_{i=1}^n x_i$$\n"
+                "- When reproducing equations from papers, convert them to proper LaTeX notation.\n"
+                "- Include citations using the [CITE:...] format.\n"
+                "- Explain your reasoning and show evidence from papers.\n"
+                "- It's fine to give long, detailed answers.\n"
+            )
+
         return (
-            "You are Jarvis, a local-first personal research copilot.\n"
+            "You are Roxanne, a local-first personal research copilot.\n"
             "Use the provided tools when you need evidence from Zotero or Obsidian.\n"
-            "Only write notes when the user explicitly asks you to do so.\n"
-            "Keep answers concise but complete, and explain what evidence you relied on.\n\n"
-            "Formatting:\n"
-            "- Use standard Markdown for formatting.\n"
-            "- For math/equations, ALWAYS use LaTeX: inline $x^2$ or display blocks $$\\sum_{i=1}^n x_i$$\n"
-            "- When reproducing equations from papers, convert them to proper LaTeX notation.\n\n"
+            "Only write notes when the user explicitly asks you to do so.\n\n"
             "Tool guidance:\n"
             "- search_zotero: semantic search across PDF content (use for topic/concept queries)\n"
             "- search_zotero_metadata: structured search by author, title, tag (use when user names a specific author or paper)\n"
@@ -455,6 +463,7 @@ class ChatOrchestrator:
             "- read_notes / write_note: search and write Obsidian vault notes\n"
             "- open_pdf: resolve a paper to its local file path\n"
             f"{citation_rules}"
+            f"{typing_instructions}"
             f"{voice_instructions}"
             f"{memory_block}"
         )

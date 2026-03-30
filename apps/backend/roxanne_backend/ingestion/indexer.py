@@ -1,19 +1,66 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import time
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Callable, Dict, Generator, List, Optional
 
 import fitz
 
-from jarvis_backend.ingestion.chunker import chunk_pages, chunk_text
-from jarvis_backend.models import AppConfig, IndexedDocument, VaultConfig
-from jarvis_backend.retrieval import RetrievalStore
+from roxanne_backend.ingestion.chunker import chunk_pages, chunk_text
+from roxanne_backend.models import AppConfig, IndexedDocument, VaultConfig
+from roxanne_backend.retrieval import RetrievalStore
 
 logger = logging.getLogger(__name__)
 
 ZOTERO_NOTES_COLLECTION = "zotero_notes"
+
+# Type for progress callback / event dict
+IndexEvent = Dict[str, Any]
+
+
+def _file_fingerprint(path: Path) -> str:
+    """Return a fingerprint string based on file mtime + size."""
+    try:
+        stat = path.stat()
+        return f"{stat.st_mtime_ns}:{stat.st_size}"
+    except OSError:
+        return ""
+
+
+def _meta_fingerprint(meta: Optional[Dict]) -> str:
+    """Hash Zotero metadata dict so we detect title/tag/collection changes."""
+    if not meta:
+        return ""
+    return hashlib.md5(json.dumps(meta, sort_keys=True).encode()).hexdigest()[:12]
+
+
+class _IndexManifest:
+    """Tracks what has been indexed and when, to skip unchanged files."""
+
+    def __init__(self, manifest_path: Path) -> None:
+        self._path = manifest_path
+        self._data: Dict[str, str] = {}  # stable_id -> fingerprint
+        self._load()
+
+    def _load(self) -> None:
+        if self._path.exists():
+            try:
+                self._data = json.loads(self._path.read_text())
+            except Exception:
+                self._data = {}
+
+    def save(self) -> None:
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+        self._path.write_text(json.dumps(self._data))
+
+    def needs_index(self, stable_id: str, fingerprint: str) -> bool:
+        return self._data.get(stable_id) != fingerprint
+
+    def mark_indexed(self, stable_id: str, fingerprint: str) -> None:
+        self._data[stable_id] = fingerprint
 
 
 class ContentIndexer:
@@ -26,6 +73,133 @@ class ContentIndexer:
             "notes": self.index_notes(config),
             "zotero_notes": self.index_zotero_notes(config),
         }
+
+    def _get_manifest(self) -> _IndexManifest:
+        manifest_path = Path(self.retrieval._paths.root) / "index_manifest.json"
+        return _IndexManifest(manifest_path)
+
+    def index_all_streaming(self, config: AppConfig, force: bool = False) -> Generator[IndexEvent, None, None]:
+        """Index everything, yielding progress events per file.
+
+        Skips files that haven't changed since last index unless force=True.
+        Detects changes via file mtime/size AND Zotero metadata changes
+        (new notes, tags, collections attached to a paper).
+        """
+        manifest = self._get_manifest()
+
+        # Count totals first for progress
+        pdf_files: List[Path] = []
+        note_files: List[tuple] = []  # (vault, path)
+        if config.zotero.storage_path:
+            root = Path(config.zotero.storage_path).expanduser()
+            if root.exists():
+                pdf_files = sorted(root.rglob("*.pdf"))
+        for vault in config.obsidian_vaults:
+            vault_root = Path(vault.path).expanduser()
+            if vault_root.exists():
+                for np in sorted(vault_root.rglob("*.md")):
+                    note_files.append((vault, np))
+
+        total_files = len(pdf_files) + len(note_files) + 1  # +1 for zotero notes step
+        done = 0
+        skipped = 0
+
+        yield {"phase": "starting", "total_files": total_files, "done": 0, "progress": 0,
+               "detail": f"Found {len(pdf_files)} papers, {len(note_files)} notes"}
+
+        # ── Papers ──
+        if pdf_files:
+            item_map = self._build_zotero_map(config)
+            total_chunks = 0
+            for i, pdf_path in enumerate(pdf_files):
+                zotero_meta = item_map.get(str(pdf_path.resolve()))
+                title = (zotero_meta or {}).get("title", pdf_path.stem)
+                paper_id = self._stable_id(pdf_path)
+
+                # Build fingerprint: file content + Zotero metadata
+                fp = _file_fingerprint(pdf_path) + "|" + _meta_fingerprint(zotero_meta)
+
+                if not force and not manifest.needs_index(paper_id, fp):
+                    skipped += 1
+                    done += 1
+                    yield {
+                        "phase": "papers", "done": done, "total_files": total_files,
+                        "progress": done / total_files,
+                        "current_file": title[:60],
+                        "detail": f"Paper {i+1}/{len(pdf_files)}: {title[:50]} (unchanged)",
+                        "chunks": 0, "skipped": True,
+                    }
+                    continue
+
+                try:
+                    chunks = self._index_pdf(pdf_path, zotero_meta)
+                    total_chunks += chunks
+                    manifest.mark_indexed(paper_id, fp)
+                except Exception as exc:
+                    logger.warning("Failed to index %s: %s", pdf_path.name, exc)
+                    chunks = 0
+                done += 1
+                yield {
+                    "phase": "papers", "done": done, "total_files": total_files,
+                    "progress": done / total_files,
+                    "current_file": title[:60],
+                    "detail": f"Paper {i+1}/{len(pdf_files)}: {title[:50]}",
+                    "chunks": chunks,
+                }
+
+        # ── Notes ──
+        if note_files:
+            total_note_chunks = 0
+            for i, (vault, note_path) in enumerate(note_files):
+                note_id = self._stable_id(note_path)
+                fp = _file_fingerprint(note_path)
+
+                if not force and not manifest.needs_index(note_id, fp):
+                    skipped += 1
+                    done += 1
+                    yield {
+                        "phase": "notes", "done": done, "total_files": total_files,
+                        "progress": done / total_files,
+                        "current_file": note_path.stem[:60],
+                        "detail": f"Note {i+1}/{len(note_files)}: {note_path.stem[:50]} (unchanged)",
+                        "chunks": 0, "skipped": True,
+                    }
+                    continue
+
+                try:
+                    chunks = self.index_note_file(vault, note_path)
+                    total_note_chunks += chunks
+                    manifest.mark_indexed(note_id, fp)
+                except Exception as exc:
+                    logger.warning("Failed to index note %s: %s", note_path.name, exc)
+                    chunks = 0
+                done += 1
+                yield {
+                    "phase": "notes", "done": done, "total_files": total_files,
+                    "progress": done / total_files,
+                    "current_file": note_path.stem[:60],
+                    "detail": f"Note {i+1}/{len(note_files)}: {note_path.stem[:50]}",
+                    "chunks": chunks,
+                }
+
+        # ── Zotero notes ──
+        yield {"phase": "zotero_notes", "done": done, "total_files": total_files,
+               "progress": done / total_files, "detail": "Indexing Zotero notes & annotations..."}
+        try:
+            zn_report = self.index_zotero_notes(config)
+        except Exception as exc:
+            logger.warning("Zotero notes indexing failed: %s", exc)
+            zn_report = {"notes_indexed": 0, "annotations_indexed": 0}
+        done += 1
+
+        # Save manifest so next run skips unchanged files
+        manifest.save()
+
+        indexed_count = total_files - 1 - skipped  # -1 for zotero notes step
+        yield {"phase": "done", "done": done, "total_files": total_files, "progress": 1.0,
+               "skipped": skipped, "indexed": indexed_count,
+               "detail": f"Complete — {indexed_count} indexed, {skipped} unchanged, "
+                         f"{zn_report.get('notes_indexed', 0)} Zotero notes"}
 
     # ─── PDF papers ─────────────────────────────────────────────────
 
@@ -104,7 +278,7 @@ class ContentIndexer:
             return {"notes_indexed": 0, "annotations_indexed": 0}
 
         try:
-            from jarvis_backend.zotero_db import ZoteroDB
+            from roxanne_backend.zotero_db import ZoteroDB
         except ImportError:
             logger.warning("zotero_db module not available, skipping Zotero note indexing")
             return {"notes_indexed": 0, "annotations_indexed": 0}
@@ -294,7 +468,7 @@ class ContentIndexer:
             return {}
 
         try:
-            from jarvis_backend.zotero_db import ZoteroDB
+            from roxanne_backend.zotero_db import ZoteroDB
 
             with ZoteroDB(db_path) as db:
                 pdf_to_item = db.build_pdf_to_item_map(storage_path)

@@ -1,5 +1,5 @@
 {
-  "name": "jarvis-assistant",
+  "name": "roxanne-assistant",
   "version": "0.1.0",
   "private": true,
   "workspaces": [
@@ -7,7 +7,7 @@
   ],
   "scripts": {
     "dev:desktop": "npm --workspace apps/desktop run dev",
-    "dev:backend": "python3 -m uvicorn jarvis_backend.main:app --reload --app-dir apps/backend",
+    "dev:backend": "python3 -m uvicorn roxanne_backend.main:app --reload --app-dir apps/backend",
     "build:desktop": "npm --workspace apps/desktop run build",
     "lint:desktop": "npm --workspace apps/desktop run lint"
   }

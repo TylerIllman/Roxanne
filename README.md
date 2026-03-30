@@ -1,75 +1,122 @@
-# Jarvis Assistant
+# Roxanne
 
-Jarvis Assistant is a local-first personal research copilot with:
+A local-first personal research copilot. Chat with your papers, notes, and knowledge base using Anthropic, OpenAI, or local Ollama models.
 
-- an Electron desktop UI built with React and TypeScript
-- a Python backend for orchestration, retrieval, and local integrations
-- onboarding for Anthropic, Zotero, Obsidian, embeddings, and speech settings
-- a modular tool registry designed for Claude tool use
-- OS keychain storage for API secrets
+## Quick Start
 
-Project reference: see `PROJECT_PLAN.md` for the current architecture, status, and next-step implementation plan.
+### Prerequisites
 
-## Stack
+- **Python 3.10+** and **Node.js 20+**
+- (Optional) [Ollama](https://ollama.com) for local models
 
-- UI: Electron, React, TypeScript, Rsbuild, Tailwind CSS
-- Backend: FastAPI, Pydantic, Anthropic SDK
-- Retrieval: Chroma, local embeddings via FastEmbed
-- PDF parsing: PyMuPDF
-- Speech: faster-whisper, Piper
+### 1. Clone and install
 
-## Repo Layout
-
-```text
-apps/
-  backend/   FastAPI backend, tools, indexing, and orchestration
-  desktop/   Electron shell and React renderer
+```bash
+git clone <repo-url> && cd roxanne
 ```
 
-## Prerequisites
-
-This workspace currently only has `python3` available on PATH. You will also need:
-
-- Node.js 20+
-- npm 10+
-- Python 3.10+ recommended
-
-## Backend Setup
+### 2. Backend
 
 ```bash
 cd apps/backend
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e .
-python -m uvicorn jarvis_backend.main:app --reload
 ```
 
-If you already had the backend environment created before the security update, rerun `pip install -e .` so the new `keyring` dependency is installed.
-
-## Desktop Setup
+### 3. Frontend
 
 ```bash
 cd apps/desktop
 npm install
+```
+
+### 4. Run (development)
+
+Open **two terminals**:
+
+```bash
+# Terminal 1 — backend with hot reload
+cd apps/backend
+source .venv/bin/activate
+python -m uvicorn roxanne_backend.main:app --host 127.0.0.1 --port 8000 --reload
+
+# Terminal 2 — Electron + React dev server
+cd apps/desktop
 npm run dev
 ```
 
-The Electron app spawns the Python backend with `python3` by default. You can override the backend entrypoint with:
+Or from the repo root:
 
 ```bash
-export JARVIS_BACKEND_CMD="python3 -m uvicorn jarvis_backend.main:app --host 127.0.0.1 --port 8000"
+# Backend
+npm run dev:backend
+
+# Desktop (separate terminal)
+npm run dev:desktop
 ```
 
-## Current MVP Scope In This Scaffold
+The app opens automatically. Walk through the setup wizard to connect your LLM, Zotero library, and Obsidian vaults.
 
-- onboarding for Anthropic API key, model, Zotero paths, multiple Obsidian vaults, embeddings, and speech settings
-- a streaming chat endpoint with Claude tool orchestration
-- local tools for Zotero search, note read/write, and PDF open
-- indexing services for PDFs and markdown notes
+### 5. Run (production)
 
-## Not Finished Yet
+```bash
+# Build the frontend
+cd apps/desktop && npm run build
 
-- packaged desktop build
-- robust Zotero database metadata extraction
-- web search provider integration
-- production-grade speech streaming
+# Start backend
+cd apps/backend
+source .venv/bin/activate
+python -m uvicorn roxanne_backend.main:app --host 127.0.0.1 --port 8000
+
+# Start Electron (loads built files)
+cd apps/desktop
+npx electron dist-electron/main.js
+```
+
+## Running Tests
+
+```bash
+cd apps/backend
+source .venv/bin/activate
+pip install -e ".[test]"
+pytest                    # all tests
+pytest -x                 # stop on first failure
+pytest --cov              # with coverage report
+pytest -k "test_models"   # run specific test file
+```
+
+## Stack
+
+| Layer | Technology |
+|-------|-----------|
+| UI | Electron, React, TypeScript, Rsbuild, Tailwind CSS |
+| Backend | FastAPI, Pydantic, Uvicorn |
+| LLM | Anthropic SDK, OpenAI SDK, Ollama (local) |
+| Retrieval | ChromaDB, FastEmbed (BAAI/bge) |
+| PDF | PyMuPDF |
+| Speech | Vosk (STT), Piper (TTS) |
+
+## Repo Layout
+
+```
+apps/
+  backend/          FastAPI backend, tools, indexing, orchestration
+    roxanne_backend/  Python package
+    tests/            pytest suite
+  desktop/          Electron shell + React renderer
+    src/main/         Electron main process
+    src/renderer/     React app
+```
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ROXANNE_BACKEND_URL` | `http://127.0.0.1:8000` | Backend URL for the Electron app |
+| `ROXANNE_CORS_ORIGINS` | dev defaults | Comma-separated allowed origins |
+| `ROXANNE_RENDERER_URL` | (built files) | Dev server URL for hot reload |
+
+## Design System
+
+See [`apps/desktop/src/renderer/DESIGN_SYSTEM.md`](apps/desktop/src/renderer/DESIGN_SYSTEM.md) for UI tokens, component patterns, and styling rules.

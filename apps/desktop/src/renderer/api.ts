@@ -59,6 +59,51 @@ export async function runIndex(baseUrl: string, scope: "all" | "papers" | "notes
   return parseJson<{ scope: string; report: unknown }>(response);
 }
 
+export type IndexEvent = {
+  phase: string;
+  done: number;
+  total_files: number;
+  progress: number;
+  detail: string;
+  current_file?: string;
+  chunks?: number;
+};
+
+export type IndexActivity = {
+  running: boolean;
+  last_event: IndexEvent | null;
+  last_completed: string | null;
+};
+
+export async function runIndexStreaming(
+  baseUrl: string,
+  onEvent: (event: IndexEvent) => void,
+): Promise<void> {
+  const resp = await fetch(`${baseUrl}/api/index/stream`, { method: "POST" });
+  if (!resp.ok) throw new Error(await resp.text());
+  const reader = resp.body?.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  if (reader) {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try { onEvent(JSON.parse(line)); } catch {}
+      }
+    }
+  }
+}
+
+export async function getIndexActivity(baseUrl: string): Promise<IndexActivity> {
+  const resp = await fetch(`${baseUrl}/api/index/activity`);
+  return resp.json();
+}
+
 export async function streamChat(
   baseUrl: string,
   request: ChatRequest,

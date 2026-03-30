@@ -1,8 +1,8 @@
-# Jarvis Assistant Project Plan
+# Roxanne Project Plan
 
 Status date: 2026-03-25
 
-This document is the canonical project reference for Jarvis Assistant. Future conversations should use this file as the source of truth for:
+This document is the canonical project reference for Roxanne. Future conversations should use this file as the source of truth for:
 
 - current product scope
 - architecture decisions already made
@@ -13,7 +13,7 @@ This document is the canonical project reference for Jarvis Assistant. Future co
 
 ## 1. Product Summary
 
-Jarvis Assistant is a local-first personal research copilot designed for:
+Roxanne is a local-first personal research copilot designed for:
 
 - Zotero paper and PDF retrieval
 - Obsidian note retrieval and note writing
@@ -210,30 +210,30 @@ Remaining privacy caveat:
 
 ### Backend
 
-- `apps/backend/jarvis_backend/main.py`
+- `apps/backend/roxanne_backend/main.py`
   - FastAPI entrypoint
   - API routes
   - service container
 
-- `apps/backend/jarvis_backend/config.py`
+- `apps/backend/roxanne_backend/config.py`
   - config load/save
   - keychain integration for secrets
 
-- `apps/backend/jarvis_backend/secret_store.py`
+- `apps/backend/roxanne_backend/secret_store.py`
   - secret storage abstraction
 
-- `apps/backend/jarvis_backend/retrieval.py`
+- `apps/backend/roxanne_backend/retrieval.py`
   - Chroma store
   - embeddings
   - session memory summaries
 
-- `apps/backend/jarvis_backend/ingestion/indexer.py`
+- `apps/backend/roxanne_backend/ingestion/indexer.py`
   - PDF and note indexing
 
-- `apps/backend/jarvis_backend/orchestrator.py`
+- `apps/backend/roxanne_backend/orchestrator.py`
   - Claude tool loop
 
-- `apps/backend/jarvis_backend/tools/`
+- `apps/backend/roxanne_backend/tools/`
   - tool implementations
 
 ### Frontend

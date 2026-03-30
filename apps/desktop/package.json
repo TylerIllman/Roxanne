@@ -1,5 +1,5 @@
 {
-  "name": "jarvis-desktop",
+  "name": "roxanne-desktop",
   "version": "0.1.0",
   "private": true,
   "main": "dist-electron/main.js",
@@ -7,7 +7,7 @@
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:electron\"",
     "dev:renderer": "rsbuild dev --host 127.0.0.1",
     "dev:main": "tsup src/main/main.ts src/main/preload.ts --format cjs --platform node --external electron --outDir dist-electron --watch --clean",
-    "dev:electron": "wait-on http://127.0.0.1:3000 file:dist-electron/main.js && cross-env JARVIS_RENDERER_URL=http://127.0.0.1:3000 electron dist-electron/main.js",
+    "dev:electron": "wait-on http://127.0.0.1:3000 file:dist-electron/main.js && cross-env ROXANNE_RENDERER_URL=http://127.0.0.1:3000 electron dist-electron/main.js",
     "build": "npm run build:renderer && npm run build:main",
     "build:renderer": "rsbuild build",
     "build:main": "tsup src/main/main.ts src/main/preload.ts --format cjs --platform node --external electron --outDir dist-electron --clean",

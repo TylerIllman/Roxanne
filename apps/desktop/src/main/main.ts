@@ -2,8 +2,8 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 
-const rendererUrl = process.env.JARVIS_RENDERER_URL;
-const backendBaseUrl = process.env.JARVIS_BACKEND_URL || "http://127.0.0.1:8000";
+const rendererUrl = process.env.ROXANNE_RENDERER_URL;
+const backendBaseUrl = process.env.ROXANNE_BACKEND_URL || "http://127.0.0.1:8000";
 
 let backendProcess: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -21,8 +21,8 @@ function startBackend() {
     return;
   }
 
-  if (process.env.JARVIS_BACKEND_CMD) {
-    backendProcess = spawn(process.env.JARVIS_BACKEND_CMD, {
+  if (process.env.ROXANNE_BACKEND_CMD) {
+    backendProcess = spawn(process.env.ROXANNE_BACKEND_CMD, {
       cwd: repoRoot(),
       env: process.env,
       shell: true,
@@ -38,7 +38,7 @@ function startBackend() {
       [
         "-m",
         "uvicorn",
-        "jarvis_backend.main:app",
+        "roxanne_backend.main:app",
         "--host",
         "127.0.0.1",
         "--port",
@@ -54,11 +54,11 @@ function startBackend() {
   }
 
   backendProcess.stdout?.on("data", (chunk) => {
-    process.stdout.write(`[jarvis-backend] ${chunk}`);
+    process.stdout.write(`[roxanne-backend] ${chunk}`);
   });
 
   backendProcess.stderr?.on("data", (chunk) => {
-    process.stderr.write(`[jarvis-backend] ${chunk}`);
+    process.stderr.write(`[roxanne-backend] ${chunk}`);
   });
 
   backendProcess.on("exit", () => {
@@ -75,14 +75,15 @@ function stopBackend() {
 }
 
 async function createWindow() {
+  const isMac = process.platform === "darwin";
   mainWindow = new BrowserWindow({
     width: 1480,
     height: 980,
     minWidth: 1160,
     minHeight: 780,
-    backgroundColor: "#f8f9fa",
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 16, y: 16 },
+    backgroundColor: "#ffffff",
+    titleBarStyle: isMac ? "hiddenInset" : "hidden",
+    ...(isMac ? { trafficLightPosition: { x: 16, y: 16 } } : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -118,7 +119,7 @@ app.on("before-quit", () => {
   stopBackend();
 });
 
-ipcMain.handle("jarvis:get-runtime-info", async () => {
+ipcMain.handle("roxanne:get-runtime-info", async () => {
   return {
     backendBaseUrl,
     userDataPath: app.getPath("userData"),
@@ -126,14 +127,14 @@ ipcMain.handle("jarvis:get-runtime-info", async () => {
   };
 });
 
-ipcMain.handle("jarvis:pick-directory", async () => {
+ipcMain.handle("roxanne:pick-directory", async () => {
   const result = await dialog.showOpenDialog(mainWindow!, {
     properties: ["openDirectory"],
   });
   return result.canceled ? null : result.filePaths[0];
 });
 
-ipcMain.handle("jarvis:pick-file", async (_, filters?: Electron.FileFilter[]) => {
+ipcMain.handle("roxanne:pick-file", async (_, filters?: Electron.FileFilter[]) => {
   const result = await dialog.showOpenDialog(mainWindow!, {
     properties: ["openFile"],
     filters,
@@ -141,12 +142,12 @@ ipcMain.handle("jarvis:pick-file", async (_, filters?: Electron.FileFilter[]) =>
   return result.canceled ? null : result.filePaths[0];
 });
 
-ipcMain.handle("jarvis:open-path", async (_, targetPath: string) => {
+ipcMain.handle("roxanne:open-path", async (_, targetPath: string) => {
   const error = await shell.openPath(targetPath);
   return { ok: !error, error };
 });
 
-ipcMain.handle("jarvis:open-pdf-page", async (_, targetPath: string, page: number) => {
+ipcMain.handle("roxanne:open-pdf-page", async (_, targetPath: string, page: number) => {
   // Try to open via Zotero's URL scheme first (handles page navigation)
   // Zotero stores PDFs in storage/<KEY>/ folders — extract the key
   const match = targetPath.match(/storage[/\\]([A-Z0-9]{8})[/\\]/);

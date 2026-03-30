@@ -16,10 +16,17 @@ body {
   background: #f8f9fa;
   font-family: "Inter", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   -webkit-font-smoothing: antialiased;
+  overflow: hidden;
 }
 
 button, input, select, textarea { font: inherit; }
 button { cursor: pointer; }
+
+/* Scrollbar styling for a cleaner look */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.25); }
 
 /* ------------------------------------------------------------------ */
 /*  Keyframes (referenced by Tailwind arbitrary animations)            */

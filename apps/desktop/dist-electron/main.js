@@ -26,8 +26,8 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var import_electron = require("electron");
 var import_node_child_process = require("child_process");
 var import_node_path = __toESM(require("path"));
-var rendererUrl = process.env.JARVIS_RENDERER_URL;
-var backendBaseUrl = process.env.JARVIS_BACKEND_URL || "http://127.0.0.1:8000";
+var rendererUrl = process.env.ROXANNE_RENDERER_URL;
+var backendBaseUrl = process.env.ROXANNE_BACKEND_URL || "http://127.0.0.1:8000";
 var backendProcess = null;
 var mainWindow = null;
 function repoRoot() {
@@ -40,8 +40,8 @@ function startBackend() {
   if (backendProcess) {
     return;
   }
-  if (process.env.JARVIS_BACKEND_CMD) {
-    backendProcess = (0, import_node_child_process.spawn)(process.env.JARVIS_BACKEND_CMD, {
+  if (process.env.ROXANNE_BACKEND_CMD) {
+    backendProcess = (0, import_node_child_process.spawn)(process.env.ROXANNE_BACKEND_CMD, {
       cwd: repoRoot(),
       env: process.env,
       shell: true
@@ -55,7 +55,7 @@ function startBackend() {
       [
         "-m",
         "uvicorn",
-        "jarvis_backend.main:app",
+        "roxanne_backend.main:app",
         "--host",
         "127.0.0.1",
         "--port",
@@ -70,10 +70,10 @@ function startBackend() {
     );
   }
   backendProcess.stdout?.on("data", (chunk) => {
-    process.stdout.write(`[jarvis-backend] ${chunk}`);
+    process.stdout.write(`[roxanne-backend] ${chunk}`);
   });
   backendProcess.stderr?.on("data", (chunk) => {
-    process.stderr.write(`[jarvis-backend] ${chunk}`);
+    process.stderr.write(`[roxanne-backend] ${chunk}`);
   });
   backendProcess.on("exit", () => {
     backendProcess = null;
@@ -87,14 +87,15 @@ function stopBackend() {
   backendProcess = null;
 }
 async function createWindow() {
+  const isMac = process.platform === "darwin";
   mainWindow = new import_electron.BrowserWindow({
     width: 1480,
     height: 980,
     minWidth: 1160,
     minHeight: 780,
-    backgroundColor: "#f8f9fa",
-    titleBarStyle: "hiddenInset",
-    trafficLightPosition: { x: 16, y: 16 },
+    backgroundColor: "#ffffff",
+    titleBarStyle: isMac ? "hiddenInset" : "hidden",
+    ...isMac ? { trafficLightPosition: { x: 16, y: 16 } } : {},
     webPreferences: {
       preload: import_node_path.default.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -124,31 +125,31 @@ import_electron.app.on("window-all-closed", () => {
 import_electron.app.on("before-quit", () => {
   stopBackend();
 });
-import_electron.ipcMain.handle("jarvis:get-runtime-info", async () => {
+import_electron.ipcMain.handle("roxanne:get-runtime-info", async () => {
   return {
     backendBaseUrl,
     userDataPath: import_electron.app.getPath("userData"),
     platform: process.platform
   };
 });
-import_electron.ipcMain.handle("jarvis:pick-directory", async () => {
+import_electron.ipcMain.handle("roxanne:pick-directory", async () => {
   const result = await import_electron.dialog.showOpenDialog(mainWindow, {
     properties: ["openDirectory"]
   });
   return result.canceled ? null : result.filePaths[0];
 });
-import_electron.ipcMain.handle("jarvis:pick-file", async (_, filters) => {
+import_electron.ipcMain.handle("roxanne:pick-file", async (_, filters) => {
   const result = await import_electron.dialog.showOpenDialog(mainWindow, {
     properties: ["openFile"],
     filters
   });
   return result.canceled ? null : result.filePaths[0];
 });
-import_electron.ipcMain.handle("jarvis:open-path", async (_, targetPath) => {
+import_electron.ipcMain.handle("roxanne:open-path", async (_, targetPath) => {
   const error = await import_electron.shell.openPath(targetPath);
   return { ok: !error, error };
 });
-import_electron.ipcMain.handle("jarvis:open-pdf-page", async (_, targetPath, page) => {
+import_electron.ipcMain.handle("roxanne:open-pdf-page", async (_, targetPath, page) => {
   const match = targetPath.match(/storage[/\\]([A-Z0-9]{8})[/\\]/);
   if (match) {
     const itemKey = match[1];

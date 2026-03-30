@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Iterable, List
 
-from jarvis_backend.tools.base import BaseTool
+from roxanne_backend.tools.base import BaseTool
 
 
 class ToolRegistry:

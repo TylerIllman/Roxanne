@@ -5,10 +5,10 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from jarvis_backend.config import ConfigStore
-from jarvis_backend.retrieval import RetrievalStore
-from jarvis_backend.tools.base import BaseTool, ToolExecutionError
-from jarvis_backend.zotero_db import ZoteroDB, format_item_summary
+from roxanne_backend.config import ConfigStore
+from roxanne_backend.retrieval import RetrievalStore
+from roxanne_backend.tools.base import BaseTool, ToolExecutionError
+from roxanne_backend.zotero_db import ZoteroDB, format_item_summary
 
 logger = logging.getLogger(__name__)
 

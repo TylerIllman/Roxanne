@@ -15,8 +15,8 @@ from uuid import uuid4
 
 import certifi
 
-from jarvis_backend.models import AppConfig
-from jarvis_backend.storage import AppPaths, restrict_permissions
+from roxanne_backend.models import AppConfig
+from roxanne_backend.storage import AppPaths, restrict_permissions
 
 logger = logging.getLogger(__name__)
 

@@ -17,21 +17,21 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 logger = logging.getLogger(__name__)
 
-from jarvis_backend.config import ConfigStore
-from jarvis_backend.ingestion.indexer import ContentIndexer
-from jarvis_backend.models import (
+from roxanne_backend.config import ConfigStore
+from roxanne_backend.ingestion.indexer import ContentIndexer
+from roxanne_backend.models import (
     AppConfig,
     ChatRequest,
     IndexRequest,
     SpeechSynthesisRequest,
 )
-from jarvis_backend.orchestrator import ChatOrchestrator
-from jarvis_backend.retrieval import RetrievalStore, SessionMemoryStore
-from jarvis_backend.speech import SpeechService
-from jarvis_backend.storage import AppPaths
-from jarvis_backend.tools.obsidian import ReadNotesTool, WriteNoteTool
-from jarvis_backend.tools.registry import ToolRegistry
-from jarvis_backend.tools.zotero import (
+from roxanne_backend.orchestrator import ChatOrchestrator
+from roxanne_backend.retrieval import RetrievalStore, SessionMemoryStore
+from roxanne_backend.speech import SpeechService
+from roxanne_backend.storage import AppPaths
+from roxanne_backend.tools.obsidian import ReadNotesTool, WriteNoteTool
+from roxanne_backend.tools.registry import ToolRegistry
+from roxanne_backend.tools.zotero import (
     GetCollectionPapersTool,
     GetPaperAnnotationsTool,
     GetPaperMetadataTool,
@@ -46,7 +46,7 @@ from jarvis_backend.tools.zotero import (
 
 
 def allowed_origins() -> list[str]:
-    configured = os.getenv("JARVIS_ALLOWED_ORIGINS")
+    configured = os.getenv("ROXANNE_ALLOWED_ORIGINS")
     if configured:
         return [origin.strip() for origin in configured.split(",") if origin.strip()]
     return [
@@ -64,7 +64,7 @@ class ServiceContainer:
         self.paths.prune_audio_files()
         self.config_store = ConfigStore(self.paths)
         self.speech = SpeechService(self.paths)
-        from jarvis_backend.conversations import ConversationStore
+        from roxanne_backend.conversations import ConversationStore
         self.conversations = ConversationStore(self.paths.root)
         self._retrieval_cache: Optional[Tuple[str, RetrievalStore]] = None
 
@@ -122,13 +122,60 @@ class ServiceContainer:
 
 
 services = ServiceContainer()
-app = FastAPI(title="Jarvis Assistant Backend")
+
+# ── Auto-index state (shared between background task and status endpoint) ──
+_index_state: Dict[str, object] = {
+    "running": False,
+    "last_event": None,  # most recent IndexEvent dict
+    "last_completed": None,  # ISO timestamp of last completed index
+}
+
+app = FastAPI(title="Roxanne Assistant Backend")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins(),
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type"],
 )
+
+
+async def _auto_index_loop():
+    """Background task: auto-index on startup, then every 15 minutes."""
+    import threading
+    from datetime import datetime, timezone
+
+    await asyncio.sleep(3)  # let server finish starting
+
+    while True:
+        config = services.load_config()
+        if not config.is_complete():
+            await asyncio.sleep(60)
+            continue
+
+        _index_state["running"] = True
+        indexer = services.indexer(config)
+
+        def run():
+            for event in indexer.index_all_streaming(config):
+                _index_state["last_event"] = event
+
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+
+        # Wait for thread to finish without blocking the event loop
+        while thread.is_alive():
+            await asyncio.sleep(0.5)
+
+        _index_state["running"] = False
+        _index_state["last_completed"] = datetime.now(timezone.utc).isoformat()
+        logger.info("Auto-index complete: %s", _index_state.get("last_event", {}).get("detail", ""))
+
+        await asyncio.sleep(900)  # 15 minutes
+
+
+@app.on_event("startup")
+async def _start_auto_indexer():
+    asyncio.create_task(_auto_index_loop())
 
 
 @app.get("/health")
@@ -170,6 +217,52 @@ async def run_index(request: IndexRequest) -> Dict[str, object]:
         report = await anyio.to_thread.run_sync(indexer.index_all, config)
 
     return {"scope": request.scope, "report": report}
+
+
+@app.post("/api/index/stream")
+async def run_index_streaming(force: bool = False) -> StreamingResponse:
+    """Stream indexing progress as NDJSON — yields per-file events.
+
+    Pass ?force=true to re-index everything regardless of change detection.
+    """
+    import queue
+    import threading
+
+    config = services.load_config()
+    indexer = services.indexer(config)
+
+    event_queue: queue.Queue = queue.Queue()
+    done_sentinel = object()
+
+    def run():
+        try:
+            for event in indexer.index_all_streaming(config, force=force):
+                event_queue.put(event)
+        except Exception as exc:
+            event_queue.put({"phase": "error", "progress": 0, "detail": str(exc)})
+        finally:
+            event_queue.put(done_sentinel)
+
+    async def generate():
+        thread = threading.Thread(target=run, daemon=True)
+        thread.start()
+        while True:
+            events = []
+            try:
+                while True:
+                    item = event_queue.get_nowait()
+                    if item is done_sentinel:
+                        for ev in events:
+                            yield (json.dumps(ev) + "\n").encode()
+                        return
+                    events.append(item)
+            except queue.Empty:
+                pass
+            for ev in events:
+                yield (json.dumps(ev) + "\n").encode()
+            await asyncio.sleep(0.2)
+
+    return StreamingResponse(generate(), media_type="application/x-ndjson")
 
 
 @app.get("/api/index/browse/{collection}")
@@ -351,6 +444,16 @@ async def index_stats() -> Dict[str, object]:
         "notes": notes,
         "memories": memories,
         "zotero_notes": zotero_notes,
+    }
+
+
+@app.get("/api/index/activity")
+async def index_activity() -> Dict[str, object]:
+    """Return current auto-index status (running, progress, last event)."""
+    return {
+        "running": _index_state["running"],
+        "last_event": _index_state["last_event"],
+        "last_completed": _index_state["last_completed"],
     }
 
 
@@ -537,19 +640,19 @@ async def detect_zotero() -> Dict[str, object]:
 
 @app.get("/api/ollama/status")
 async def get_ollama_status() -> Dict[str, object]:
-    from jarvis_backend.ollama_manager import ollama_status
+    from roxanne_backend.ollama_manager import ollama_status
     return await anyio.to_thread.run_sync(ollama_status)
 
 
 @app.post("/api/ollama/start")
 async def start_ollama() -> Dict[str, object]:
-    from jarvis_backend.ollama_manager import start_ollama_server
+    from roxanne_backend.ollama_manager import start_ollama_server
     return await anyio.to_thread.run_sync(start_ollama_server)
 
 
 @app.get("/api/ollama/install-info")
 async def ollama_install_info() -> Dict[str, object]:
-    from jarvis_backend.ollama_manager import install_instructions
+    from roxanne_backend.ollama_manager import install_instructions
     return install_instructions()
 
 
@@ -558,7 +661,7 @@ async def pull_ollama_model(model_name: str) -> StreamingResponse:
     """Pull an Ollama model with streaming progress."""
     import queue
     import threading
-    from jarvis_backend.ollama_manager import pull_model_streaming
+    from roxanne_backend.ollama_manager import pull_model_streaming
 
     event_queue: queue.Queue = queue.Queue()
     done_sentinel = object()
@@ -720,6 +823,7 @@ async def ws_stream_transcription(ws: WebSocket):
     - Server sends JSON: {"type": "partial", "text": "..."} or {"type": "final", "text": "..."}
     """
     await ws.accept()
+    logger.info("[STT] WebSocket connected — loading Vosk model…")
 
     sample_rate = 16000
     recognizer = None
@@ -729,6 +833,7 @@ async def ws_stream_transcription(ws: WebSocket):
         # Pre-load the vosk model using configured STT model
         config = services.config_store.load()
         recognizer = services.speech.create_recognizer(sample_rate, config)
+        logger.info(f"[STT] Recognizer ready (model={config.speech.stt_model}, rate={sample_rate})")
 
         while True:
             message = await ws.receive()
@@ -781,6 +886,7 @@ async def ws_stream_transcription(ws: WebSocket):
                     # Vosk detected end of phrase — send final result
                     result = json.loads(recognizer.Result())
                     text = result.get("text", "").strip()
+                    logger.info(f"[STT final] {text!r}")
                     if text:
                         await ws.send_json({"type": "final", "text": text})
                         last_partial = ""
@@ -790,6 +896,7 @@ async def ws_stream_transcription(ws: WebSocket):
                     partial_text = partial.get("partial", "").strip()
                     if partial_text and partial_text != last_partial:
                         last_partial = partial_text
+                        logger.info(f"[STT interim] {partial_text!r}")
                         await ws.send_json({"type": "interim", "text": partial_text})
 
     except WebSocketDisconnect:

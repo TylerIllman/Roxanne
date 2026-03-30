@@ -13,7 +13,7 @@ except ImportError:  # pragma: no cover - handled at runtime if deps are stale
     PasswordDeleteError = Exception
 
 
-SERVICE_NAME = "JarvisAssistant"
+SERVICE_NAME = "RoxanneAssistant"
 ANTHROPIC_API_KEY = "anthropic_api_key"
 OPENAI_EMBEDDING_API_KEY = "openai_embedding_api_key"
 

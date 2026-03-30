@@ -13,7 +13,7 @@ export default defineConfig({
     },
   },
   html: {
-    title: "Jarvis Assistant",
+    title: "Roxanne",
     template: "./src/renderer/index.html",
   },
   output: {

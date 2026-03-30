@@ -2,7 +2,7 @@ import type { RuntimeInfo } from "./types";
 
 declare global {
   interface Window {
-    jarvis: {
+    roxanne: {
       getRuntimeInfo: () => Promise<RuntimeInfo>;
       pickDirectory: () => Promise<string | null>;
       pickFile: (filters?: Electron.FileFilter[]) => Promise<string | null>;

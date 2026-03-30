@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
-from jarvis_backend.models import AppConfig
-from jarvis_backend.secret_store import (
+from roxanne_backend.models import AppConfig
+from roxanne_backend.secret_store import (
     ANTHROPIC_API_KEY,
     OPENAI_EMBEDDING_API_KEY,
     SecretStore,
     unwrap_secret,
 )
-from jarvis_backend.storage import AppPaths, read_json, write_json
+from roxanne_backend.storage import AppPaths, read_json, write_json
 
 
 class ConfigStore:
