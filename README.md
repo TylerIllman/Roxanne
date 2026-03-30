@@ -7,6 +7,7 @@ A local-first personal research copilot. Chat with your papers, notes, and knowl
 For normal users, the best path is the packaged desktop app:
 
 - [Download the latest Roxanne installer from Releases](../../releases/latest)
+- [Browse all published installers](../../releases)
 
 Once you push a version tag such as `v0.1.0`, the release workflow in [`.github/workflows/release.yml`](.github/workflows/release.yml) will build and attach platform-specific installers:
 
@@ -118,6 +119,17 @@ GitHub Actions now covers both everyday changes and releases:
 - push a tag like `v0.1.0`: [`.github/workflows/release.yml`](.github/workflows/release.yml) builds macOS, Windows, and Linux installers and uploads them to the matching GitHub Release
 
 You can also trigger the workflow manually from the Actions tab.
+
+### Maintainer release flow
+
+Once the repo is on GitHub, publishing a downloadable app is:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+That tag triggers the release workflow, which builds installers and publishes them to GitHub Releases so people can install Roxanne without running any dev commands.
 
 ## Running Tests
 

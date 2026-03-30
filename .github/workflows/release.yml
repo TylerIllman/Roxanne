@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   build:
+    name: Build ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
@@ -46,16 +47,27 @@ jobs:
       - name: Build desktop installers
         run: npm run dist:desktop
 
-      - name: Upload release artifacts
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: apps/desktop/release/**
-
-      - name: Upload workflow artifacts
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+      - name: Upload packaged artifacts
         uses: actions/upload-artifact@v4
         with:
           name: roxanne-${{ matrix.os }}
           path: apps/desktop/release/**
+
+  publish:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release-artifacts/**
