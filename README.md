@@ -9,6 +9,20 @@ For normal users, the best path is the packaged desktop app:
 - [Download the latest Roxanne installer from Releases](../../releases/latest)
 - [Browse all published installers](../../releases)
 
+If you would rather install from the command line, use one of these:
+
+```bash
+# macOS or Linux
+curl -fsSL https://raw.githubusercontent.com/TylerIllman/Roxanne/main/scripts/install.sh | bash
+```
+
+```powershell
+# Windows PowerShell
+irm https://raw.githubusercontent.com/TylerIllman/Roxanne/main/scripts/install-windows.ps1 | iex
+```
+
+On macOS, the CLI installer removes the quarantine attribute after installation so the app can open without the usual browser-download Gatekeeper block.
+
 Once you push a version tag such as `v0.1.0`, the release workflow in [`.github/workflows/release.yml`](.github/workflows/release.yml) will build and attach platform-specific installers:
 
 - macOS: `.dmg`
@@ -164,6 +178,8 @@ apps/
     src/renderer/     React app
 scripts/
   build-backend-binary.mjs
+  install.sh
+  install-windows.ps1
 .github/workflows/
   release.yml
 ```

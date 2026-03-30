@@ -40,5 +40,8 @@ jobs:
       - name: Type-check desktop app
         run: npm --workspace apps/desktop run lint
 
+      - name: Validate CLI installer script
+        run: bash -n scripts/install.sh
+
       - name: Build desktop app
         run: npm --workspace apps/desktop run build
