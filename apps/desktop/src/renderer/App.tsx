@@ -77,7 +77,7 @@ import type {
 /* ------------------------------------------------------------------ */
 
 const EMPTY_CONFIG: ConfigForm = {
-  anthropic: { provider: "anthropic", api_key: "", model: "claude-sonnet-4-20250514", max_tokens: 1400, base_url: "" },
+  anthropic: { provider: "anthropic", api_key: "", model: "claude-sonnet-4-20250514", max_tokens: 1400, max_tool_loops: 12, base_url: "" },
   zotero: { database_path: "", storage_path: "" },
   embeddings: { provider: "fastembed", model: "BAAI/bge-base-en-v1.5", openai_api_key: "", openai_base_url: "" },
   speech: { stt_model: "small", piper_executable_path: "", piper_voice_model_path: "", voice_id: "en_US-amy-medium", speed: 1.15 },
@@ -112,6 +112,7 @@ function publicToForm(config: PublicConfig): ConfigForm {
       api_key: "",
       model: config.anthropic.model || EMPTY_CONFIG.anthropic.model,
       max_tokens: config.anthropic.max_tokens || EMPTY_CONFIG.anthropic.max_tokens,
+      max_tool_loops: config.anthropic.max_tool_loops || EMPTY_CONFIG.anthropic.max_tool_loops,
       base_url: config.anthropic.base_url || "",
     },
     zotero: {
@@ -142,6 +143,7 @@ function sanitizeConfig(config: ConfigForm): ConfigForm {
       api_key: config.anthropic.api_key.trim(),
       model: config.anthropic.model.trim(),
       max_tokens: config.anthropic.max_tokens,
+      max_tool_loops: config.anthropic.max_tool_loops,
       base_url: config.anthropic.base_url.trim(),
     },
     zotero: {
@@ -1185,21 +1187,6 @@ function OllamaSetupPanel({ baseUrl, configForm, setConfigForm }: { baseUrl: str
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Status indicators */}
-      {[
-        { label: "Ollama installed", ok: ollamaStatus.installed },
-        { label: "Server running", ok: ollamaStatus.running },
-        { label: `Model: ${selectedModel}`, ok: modelInstalled },
-      ].map((item) => (
-        <div key={item.label} className={cn("flex items-center gap-2 px-3 py-2 border rounded-lg text-xs transition-colors", item.ok ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-zinc-200 bg-zinc-50 text-zinc-500")}>
-          <span className={cn("shrink-0 w-5 h-5 grid place-items-center rounded-full", item.ok ? "bg-emerald-100" : "bg-zinc-200")}>
-            {item.ok ? <IconCheck className="w-3 h-3" /> : <span className="w-1.5 h-1.5 rounded-full bg-zinc-400" />}
-          </span>
-          <span className="font-medium">{item.label}</span>
-          <span className="ml-auto font-medium">{item.ok ? "Ready" : "Needed"}</span>
-        </div>
-      ))}
-
       {/* Not installed */}
       {!ollamaStatus.installed && (
         <div className="px-4 py-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 leading-relaxed">
@@ -2458,6 +2445,9 @@ function SettingsPanel({ configForm, setConfigForm, savedConfig, saving, onClose
               )}
               <Field label="Max tokens">
                 <Input type="number" min={512} max={4096} value={configForm.anthropic.max_tokens} onChange={(e) => setConfigForm((c) => ({ ...c, anthropic: { ...c.anthropic, max_tokens: Number(e.target.value) || 1400 } }))} />
+              </Field>
+              <Field label="Max tool loops" hint="Maximum orchestration rounds before Roxanne stops repeated tool calling for safety.">
+                <Input type="number" min={1} max={30} value={configForm.anthropic.max_tool_loops} onChange={(e) => setConfigForm((c) => ({ ...c, anthropic: { ...c.anthropic, max_tool_loops: Number(e.target.value) || 12 } }))} />
               </Field>
               {configForm.anthropic.provider === "ollama" && (
                 <>

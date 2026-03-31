@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from roxanne_backend.models import ToolEvent
+from roxanne_backend.models import AppConfig, LLMConfig, ToolEvent
 from roxanne_backend.orchestrator import ChatOrchestrator
 
 
@@ -114,3 +114,13 @@ class TestToolStatusMsg:
     def test_unknown_tool(self, orchestrator: ChatOrchestrator):
         msg = orchestrator._tool_status_msg("unknown_tool_xyz")
         assert len(msg) > 0  # Should return a fallback message
+
+
+class TestLoopLimit:
+    def test_uses_configured_loop_limit(self, orchestrator: ChatOrchestrator):
+        config = AppConfig(anthropic=LLMConfig(max_tool_loops=18))
+        assert orchestrator._max_tool_loops(config) == 18
+
+    def test_loop_limit_supports_higher_bound(self, orchestrator: ChatOrchestrator):
+        config = AppConfig(anthropic=LLMConfig(max_tool_loops=30))
+        assert orchestrator._max_tool_loops(config) == 30

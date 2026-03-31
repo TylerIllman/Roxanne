@@ -121,7 +121,7 @@ class ChatOrchestrator:
             messages.append({"role": turn.role, "content": turn.content})
         messages.append({"role": "user", "content": request.message})
 
-        for _attempt in range(6):
+        for _attempt in range(self._max_tool_loops(config)):
             # Use blocking stream in a thread, collect events via a queue
             import queue
             event_queue: queue.Queue = queue.Queue()
@@ -248,7 +248,7 @@ class ChatOrchestrator:
             messages.append({"role": turn.role, "content": turn.content})
         messages.append({"role": "user", "content": request.message})
 
-        for _attempt in range(6):
+        for _attempt in range(self._max_tool_loops(config)):
             kwargs: Dict[str, Any] = {
                 "model": llm.model,
                 "max_tokens": llm.max_tokens,
@@ -389,6 +389,9 @@ class ChatOrchestrator:
         "write_note": "Writing note…",
         "open_pdf": "Opening PDF…",
     }
+
+    def _max_tool_loops(self, config: AppConfig) -> int:
+        return max(1, min(config.anthropic.max_tool_loops, 30))
 
     def _tool_status_msg(self, tool_name: str) -> str:
         return self._TOOL_STATUS.get(tool_name, f"{tool_name}…")

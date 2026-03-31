@@ -31,6 +31,7 @@ class TestLLMConfig:
         assert c.api_key is None
         assert c.model == ""
         assert c.max_tokens == 1400
+        assert c.max_tool_loops == 12
 
     def test_ollama_no_key_needed(self):
         c = LLMConfig(provider="ollama", model="qwen2.5:7b")
@@ -44,6 +45,10 @@ class TestLLMConfig:
     def test_invalid_provider_rejected(self):
         with pytest.raises(ValidationError):
             LLMConfig(provider="google")
+
+    def test_invalid_tool_loop_limit_rejected(self):
+        with pytest.raises(ValidationError):
+            LLMConfig(max_tool_loops=0)
 
 
 # ── AppConfig ──────────────────────────────────────────────────────

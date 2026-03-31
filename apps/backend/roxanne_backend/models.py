@@ -18,6 +18,7 @@ class LLMConfig(BaseModel):
     api_key: Optional[SecretStr] = None
     model: str = ""
     max_tokens: int = 1400
+    max_tool_loops: int = Field(default=12, ge=1, le=30)
     # OpenAI-compatible endpoint (also used for Ollama)
     base_url: Optional[str] = None
 

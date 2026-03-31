@@ -18,6 +18,7 @@ export type ConfigForm = {
     api_key: string;
     model: string;
     max_tokens: number;
+    max_tool_loops: number;
     base_url: string;
   };
   zotero: {
@@ -46,6 +47,7 @@ export type PublicConfig = {
     api_key?: string | null;
     model: string;
     max_tokens: number;
+    max_tool_loops: number;
     base_url?: string | null;
   };
   zotero: {
