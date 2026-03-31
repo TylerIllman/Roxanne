@@ -2,7 +2,7 @@
 
 # Roxanne
 
-Roxanne is a local-first research copilot for text and spoken voice conversations with your Zotero library and Obsidian knowledge base using Anthropic, OpenAI, or local Ollama models. It works by indexing and embedding your entire Zotero library data base and Obsidian vaults, it then uses agentic MCP to search, read and even update Zotero and Obsidian.
+Roxanne is a local-first research copilot for text and spoken voice conversations with your Zotero library and Obsidian knowledge base using Anthropic, OpenAI, or local Ollama models. It works by indexing and embedding your entire Zotero library database and Obsidian vaults, it then uses agentic MCP to search, read and even update Zotero and Obsidian.
 
 ## Install
 
