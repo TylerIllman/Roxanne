@@ -71,6 +71,7 @@ class TestToolsEndpoint:
         data = resp.json()
         assert "tools" in data
         assert isinstance(data["tools"], list)
+        assert any(tool["name"] == "search_sources" for tool in data["tools"])
 
 
 # ── Index ──────────────────────────────────────────────────────────

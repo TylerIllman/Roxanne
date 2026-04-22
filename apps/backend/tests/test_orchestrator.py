@@ -51,9 +51,20 @@ class TestSystemPrompt:
 
     def test_tool_guidance(self, orchestrator: ChatOrchestrator):
         prompt = orchestrator._system_prompt([], voice_mode=False)
+        assert "search_sources" in prompt
         assert "search_zotero" in prompt
         assert "retrieve_paper_chunks" in prompt
         assert "read_notes" in prompt
+
+    def test_prompt_includes_note_citation_rules(self, orchestrator: ChatOrchestrator):
+        prompt = orchestrator._system_prompt([], voice_mode=False)
+        assert "absolute_path" in prompt
+        assert "Leave page_number_value blank for notes" in prompt
+
+    def test_voice_prompt_supports_note_citations(self, orchestrator: ChatOrchestrator):
+        prompt = orchestrator._system_prompt([], voice_mode=True)
+        assert "Obsidian note" in prompt
+        assert "leave page_number_value blank" in prompt
 
     def test_memory_included(self, orchestrator: ChatOrchestrator):
         memories = [{"document": "User prefers concise answers.", "metadata": {}}]

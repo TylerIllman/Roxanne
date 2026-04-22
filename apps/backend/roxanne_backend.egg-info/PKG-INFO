@@ -25,3 +25,5 @@ Requires-Dist: pytest>=8.0; extra == "test"
 Requires-Dist: pytest-asyncio>=0.24; extra == "test"
 Requires-Dist: pytest-cov>=5.0; extra == "test"
 Requires-Dist: httpx>=0.28.1; extra == "test"
+Provides-Extra: build
+Requires-Dist: pyinstaller>=6.11; extra == "build"

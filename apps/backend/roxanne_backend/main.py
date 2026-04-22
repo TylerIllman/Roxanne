@@ -32,6 +32,7 @@ from roxanne_backend.speech import SpeechService
 from roxanne_backend.storage import AppPaths
 from roxanne_backend.tools.obsidian import ReadNotesTool, WriteNoteTool
 from roxanne_backend.tools.registry import ToolRegistry
+from roxanne_backend.tools.search import SearchSourcesTool
 from roxanne_backend.tools.zotero import (
     GetCollectionPapersTool,
     GetPaperAnnotationsTool,
@@ -96,6 +97,7 @@ class ServiceContainer:
         retrieval = self.retrieval(config)
         return ToolRegistry(
             [
+                SearchSourcesTool(retrieval),
                 # Zotero vector search
                 SearchZoteroTool(retrieval),
                 RetrievePaperChunksTool(retrieval),

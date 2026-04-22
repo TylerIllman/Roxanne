@@ -43,6 +43,7 @@ class EmbeddingManager:
 class RetrievalStore:
     PAPER_COLLECTION = "papers"
     NOTE_COLLECTION = "notes"
+    ZOTERO_NOTE_COLLECTION = "zotero_notes"
     MEMORY_COLLECTION = "memories"
 
     def __init__(self, paths: AppPaths, embedding_settings: EmbeddingConfig) -> None:
@@ -78,10 +79,24 @@ class RetrievalStore:
         n_results: int = 5,
         where: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
+        return self.query_with_embedding(
+            collection_name,
+            self.embeddings.embed_query(query),
+            n_results=n_results,
+            where=where,
+        )
+
+    def query_with_embedding(
+        self,
+        collection_name: str,
+        query_embedding: List[float],
+        n_results: int = 5,
+        where: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
         collection = self._collection(collection_name)
         try:
             response = collection.query(
-                query_embeddings=[self.embeddings.embed_query(query)],
+                query_embeddings=[query_embedding],
                 n_results=n_results,
                 where=where,
                 include=["documents", "metadatas", "distances"],
@@ -91,20 +106,61 @@ class RetrievalStore:
             if "Nothing found on disk" in str(exc) or "no data" in str(exc).lower():
                 return []
             raise
+        ids = response.get("ids", [[]])[0]
         documents = response.get("documents", [[]])[0]
         metadatas = response.get("metadatas", [[]])[0]
         distances = response.get("distances", [[]])[0]
 
         rows: List[Dict[str, Any]] = []
-        for document, metadata, distance in zip(documents, metadatas, distances):
+        for item_id, document, metadata, distance in zip(ids, documents, metadatas, distances):
             rows.append(
                 {
+                    "id": item_id,
                     "document": document,
                     "metadata": metadata or {},
                     "distance": distance,
                 }
             )
         return rows
+
+    def query_collections(
+        self,
+        collection_names: List[str],
+        query: str,
+        n_results: int = 8,
+        per_collection: Optional[int] = None,
+        where_by_collection: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
+        if not collection_names:
+            return []
+
+        query_embedding = self.embeddings.embed_query(query)
+        limit_per_collection = per_collection or max(n_results, 6)
+        merged: List[Dict[str, Any]] = []
+
+        for collection_name in collection_names:
+            rows = self.query_with_embedding(
+                collection_name,
+                query_embedding,
+                n_results=limit_per_collection,
+                where=(where_by_collection or {}).get(collection_name),
+            )
+            for row in rows:
+                merged.append({**row, "collection": collection_name})
+
+        merged.sort(key=lambda row: float(row.get("distance") or 0))
+
+        deduped: List[Dict[str, Any]] = []
+        seen = set()
+        for row in merged:
+            key = (row.get("collection"), row.get("id"))
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(row)
+            if len(deduped) >= n_results:
+                break
+        return deduped
 
     def list_collection(
         self, collection_name: str, limit: int = 2000, offset: int = 0,
@@ -178,4 +234,3 @@ class SessionMemoryStore:
             },
         )
         self.retrieval.upsert(RetrievalStore.MEMORY_COLLECTION, [document])
-

@@ -376,6 +376,7 @@ class ChatOrchestrator:
     # ─── shared helpers ─────────────────────────────────────────────
 
     _TOOL_STATUS: Dict[str, str] = {
+        "search_sources": "Searching sources…",
         "search_zotero": "Searching papers…",
         "search_zotero_metadata": "Looking up metadata…",
         "retrieve_paper_chunks": "Reading paper…",
@@ -406,11 +407,14 @@ class ChatOrchestrator:
             citation_rules = (
                 "\n\nCitation rules for voice conversation:\n"
                 "- If you used a paper, mention it naturally in prose, usually as lead author plus year.\n"
-                "- Also include [CITE:file_path_value|page_number_value|short quote] tags for the UI reference chips.\n"
+                "- If you used an Obsidian note, mention it naturally by note title when helpful.\n"
+                "- Also include [CITE:source_path_value|page_number_value|short quote] tags for the UI reference chips.\n"
                 "- [CITE:...] is the ONLY structured markup allowed in voice conversation mode.\n"
                 "- Put [CITE:...] right after the sentence it supports. Do not put it on its own line.\n"
-                "- Replace file_path_value with the ACTUAL file_path string from the tool result.\n"
-                "- Replace page_number_value with the ACTUAL page_start number from the tool result.\n"
+                "- For papers, replace source_path_value with the ACTUAL file_path or citation_path string from the tool result.\n"
+                "- For papers, replace page_number_value with the ACTUAL page_start or citation_page number from the tool result.\n"
+                "- For Obsidian notes, replace source_path_value with the ACTUAL absolute_path or citation_path string from the tool result.\n"
+                "- For Obsidian notes, leave page_number_value blank, like [CITE:/Users/x/Note.md||short quote].\n"
                 "- short quote: a brief excerpt (under 40 words) from the chunk you're citing.\n"
                 "- Never invent citations. Only cite what tools actually returned.\n"
                 "- Never dump full author lists, journal names, or bibliography details unless the user explicitly asks.\n"
@@ -419,13 +423,18 @@ class ChatOrchestrator:
             citation_rules = (
                 "\n\nCitation rules (IMPORTANT):\n"
                 "- When you use content from a paper, cite it with the author and year inline.\n"
+                "- When you use content from an Obsidian note, cite it with the note title inline when helpful.\n"
                 "- Add a clickable reference using this exact format:\n"
-                "  [CITE:file_path_value|page_number_value|short quote]\n"
-                "- IMPORTANT: Replace file_path_value with the ACTUAL file_path string from the tool result.\n"
-                "  Replace page_number_value with the ACTUAL page_start number from the tool result.\n"
-                "  Do NOT write the literal words 'file_path' or 'page_start' — use their values.\n"
+                "  [CITE:source_path_value|page_number_value|short quote]\n"
+                "- IMPORTANT: For papers, replace source_path_value with the ACTUAL file_path or citation_path string from the tool result.\n"
+                "  Replace page_number_value with the ACTUAL page_start or citation_page number from the tool result.\n"
+                "- For Obsidian notes, replace source_path_value with the ACTUAL absolute_path or citation_path string from the tool result.\n"
+                "  Leave page_number_value blank for notes.\n"
+                "  Do NOT write the literal words 'file_path', 'absolute_path', or 'page_start' — use their values.\n"
                 "- Example: If tool returns file_path='/Users/x/paper.pdf' and page_start=12, write:\n"
                 "  [CITE:/Users/x/paper.pdf|12|the relevant quote from the text]\n"
+                "- Example: If tool returns absolute_path='/Users/x/Notes/Idea.md', write:\n"
+                "  [CITE:/Users/x/Notes/Idea.md||the relevant quote from the note]\n"
                 "- short quote: a brief excerpt (under 40 words) from the chunk you're citing.\n"
                 "- You can place multiple [CITE:...] references in one response.\n"
                 "- Never invent citations. Only cite what tools actually returned.\n"
@@ -441,7 +450,7 @@ class ChatOrchestrator:
                 "- MAX 2-3 sentences per response. If more is needed, summarise then ask 'Want details?'\n"
                 "- Speak in natural prose only.\n"
                 "- NO markdown, NO bullet points, NO numbered lists, NO headings, NO section labels, NO formatting of any kind.\n"
-                "- Return plain text only. The only allowed markup is [CITE:...] citation tags for paper references.\n"
+                "- Return plain text only. The only allowed markup is [CITE:...] citation tags for source references.\n"
                 "- Never output literal markdown markers like #, *, -, backticks, tables, or link syntax.\n"
                 "- Sound human and conversational, like a smart person talking naturally.\n"
                 "- Lead with the answer the user actually wants, not background setup.\n"
@@ -449,7 +458,7 @@ class ChatOrchestrator:
                 "- If you are about to make a list, rewrite it as a short spoken explanation instead.\n"
                 "- Default to one short paragraph. Only split into two short paragraphs if it really improves clarity.\n"
                 "- Contractions are good. Short punchy sentences are good.\n"
-                "- Cite conversationally in the sentence itself, like 'Smith 2023 found that…', and also attach the matching [CITE:...] tag.\n\n"
+                "- Cite conversationally in the sentence itself, like 'Smith 2023 found that…' for papers or 'In your note Deep Learning…' for notes, and also attach the matching [CITE:...] tag.\n\n"
                 "TOOL NARRATION (critical):\n"
                 "- Before EVERY tool call, say exactly ONE phrase (3-6 words).\n"
                 "  Examples: 'Searching now.' / 'Let me check.' / 'Pulling that up.' / 'One sec.'\n"
@@ -480,6 +489,7 @@ class ChatOrchestrator:
             "Use the provided tools when you need evidence from Zotero or Obsidian.\n"
             "Only write notes when the user explicitly asks you to do so.\n\n"
             "Tool guidance:\n"
+            "- search_sources: semantic search across both Zotero paper chunks and Obsidian note chunks in the same embedding space (use this first when the answer could be in either place)\n"
             "- search_zotero: semantic search across PDF content (use for topic/concept queries)\n"
             "- search_zotero_metadata: structured search by author, title, tag (use when user names a specific author or paper)\n"
             "- retrieve_paper_chunks: drill into a specific paper's content (equations, methods, formulas)\n"
@@ -489,7 +499,7 @@ class ChatOrchestrator:
             "- search_zotero_notes: semantic search across all Zotero notes and annotations\n"
             "- list_zotero_collections: list all Zotero folders\n"
             "- get_collection_papers: list papers in a specific collection\n"
-            "- read_notes / write_note: search and write Obsidian vault notes\n"
+            "- read_notes / write_note: search and write Obsidian vault notes (read_notes is note-only; use search_sources for mixed paper+note retrieval)\n"
             "- open_pdf: resolve a paper to its local file path\n"
             f"{citation_rules}"
             f"{typing_instructions}"

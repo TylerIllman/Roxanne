@@ -5,8 +5,11 @@ from typing import Any, Dict, List
 
 import pytest
 
+from roxanne_backend.models import EmbeddingConfig, IndexedDocument
+from roxanne_backend.retrieval import RetrievalStore
 from roxanne_backend.tools.base import BaseTool, ToolExecutionError
 from roxanne_backend.tools.registry import ToolRegistry
+from roxanne_backend.tools.search import SearchSourcesTool
 
 
 # ── Test Tool Implementations ──────────────────────────────────────
@@ -106,3 +109,47 @@ class TestBaseTool:
         err = ToolExecutionError("something broke")
         assert str(err) == "something broke"
         assert isinstance(err, Exception)
+
+
+class TestSearchSourcesTool:
+    @pytest.mark.asyncio
+    async def test_returns_mixed_paper_and_note_hits(self, app_paths):
+        retrieval = RetrievalStore(app_paths, EmbeddingConfig(provider="fastembed", model="BAAI/bge-small-en-v1.5"))
+        retrieval.upsert(
+            RetrievalStore.PAPER_COLLECTION,
+            [
+                IndexedDocument(
+                    id="paper-1",
+                    text="RNA targeting compounds can be optimized with graph neural networks.",
+                    metadata={
+                        "paper_id": "paper-1",
+                        "title": "RNA Paper",
+                        "file_path": "/tmp/rna-paper.pdf",
+                        "page_start": 4,
+                    },
+                )
+            ],
+        )
+        retrieval.upsert(
+            RetrievalStore.NOTE_COLLECTION,
+            [
+                IndexedDocument(
+                    id="note-1",
+                    text="Obsidian note about RNA targeting and graph neural network design ideas.",
+                    metadata={
+                        "note_id": "note-1",
+                        "title": "RNA Ideas",
+                        "vault_name": "Research",
+                        "relative_path": "Ideas/RNA Ideas.md",
+                        "absolute_path": "/tmp/RNA Ideas.md",
+                    },
+                )
+            ],
+        )
+
+        tool = SearchSourcesTool(retrieval)
+        results = await tool.invoke({"query": "RNA graph neural networks", "limit": 6})
+
+        assert any(result["source_type"] == "paper" for result in results)
+        assert any(result["source_type"] == "note" for result in results)
+        assert all(result.get("citation_path") for result in results)

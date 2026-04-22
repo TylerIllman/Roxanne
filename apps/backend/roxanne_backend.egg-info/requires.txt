@@ -16,6 +16,9 @@ python-multipart>=0.0.20
 rapidfuzz>=3.10.0
 uvicorn[standard]>=0.34.0
 
+[build]
+pyinstaller>=6.11
+
 [test]
 pytest>=8.0
 pytest-asyncio>=0.24

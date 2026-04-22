@@ -134,6 +134,8 @@ class RetrievePaperChunksTool(BaseTool):
                 "authors": row["metadata"].get("authors", ""),
                 "year": row["metadata"].get("year", ""),
                 "file_path": row["metadata"].get("file_path"),
+                "citation_path": row["metadata"].get("file_path"),
+                "citation_page": row["metadata"].get("page_start"),
                 "chunk": row["document"],
                 "chunk_index": row["metadata"].get("chunk_index"),
                 "page_start": row["metadata"].get("page_start"),

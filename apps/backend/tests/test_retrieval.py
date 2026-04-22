@@ -86,6 +86,38 @@ class TestRetrievalStore:
         assert len(results) == 1
         assert results[0]["id"] == "m1"
 
+    def test_query_collections_merges_sources(self, retrieval: RetrievalStore):
+        retrieval.upsert(
+            RetrievalStore.PAPER_COLLECTION,
+            [
+                IndexedDocument(
+                    id="paper-1",
+                    text="Graph neural networks improve molecular property prediction.",
+                    metadata={"paper_id": "paper-1", "title": "GNN Paper", "file_path": "/tmp/paper.pdf"},
+                )
+            ],
+        )
+        retrieval.upsert(
+            RetrievalStore.NOTE_COLLECTION,
+            [
+                IndexedDocument(
+                    id="note-1",
+                    text="Meeting notes about graph neural networks for molecule screening.",
+                    metadata={"note_id": "note-1", "title": "GNN Notes", "absolute_path": "/tmp/GNN Notes.md"},
+                )
+            ],
+        )
+
+        results = retrieval.query_collections(
+            [RetrievalStore.PAPER_COLLECTION, RetrievalStore.NOTE_COLLECTION],
+            "graph neural molecules",
+            n_results=4,
+        )
+
+        assert len(results) >= 2
+        assert any(row["collection"] == RetrievalStore.PAPER_COLLECTION for row in results)
+        assert any(row["collection"] == RetrievalStore.NOTE_COLLECTION for row in results)
+
     def test_empty_collection_query(self, retrieval: RetrievalStore):
         results = retrieval.query("nonexistent", "anything", n_results=5)
         assert results == []

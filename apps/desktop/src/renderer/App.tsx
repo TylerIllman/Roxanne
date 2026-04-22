@@ -628,11 +628,18 @@ function MarkdownContent({ content }: { content: string }) {
 
 /**
  * Parse and render citations in format [CITE:file_path|page|quoted_text]
- * Renders as clickable inline pill buttons that open the PDF at the specific page.
+ * Renders as clickable inline pill buttons that open the referenced source.
  * Shows quoted text on hover.
  */
 /** Parse [CITE:path|page|text] tags out of content */
-type ParsedCitation = { filePath: string; page: number; quotedText: string; label: string };
+type ParsedCitation = { filePath: string; page: number; quotedText: string; label: string; kind: "paper" | "note" | "file" };
+
+function citationKind(filePath: string): ParsedCitation["kind"] {
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith(".pdf")) return "paper";
+  if (lower.endsWith(".md")) return "note";
+  return "file";
+}
 
 function parseCitations(content: string): { cleanContent: string; citations: ParsedCitation[] } {
   const citations: ParsedCitation[] = [];
@@ -643,13 +650,13 @@ function parseCitations(content: string): { cleanContent: string; citations: Par
       const fp = (filePath || "").trim();
       const page = parseInt((pageStr || "").trim(), 10) || 0;
       const quotedText = (text || "").trim();
-      // Extract filename for label
-      const fileName = fp.split("/").pop()?.replace(".pdf", "") || "Source";
+      const kind = citationKind(fp);
+      const fileName = (fp.split("/").pop() || "Source").replace(/\.(pdf|md)$/i, "");
       // Deduplicate by path+page
       const key = `${fp}|${page}`;
       if (!seen.has(key)) {
         seen.add(key);
-        citations.push({ filePath: fp, page, quotedText, label: fileName });
+        citations.push({ filePath: fp, page, quotedText, label: fileName, kind });
       }
       return ""; // strip from rendered text
     }
@@ -674,10 +681,10 @@ function CitationContent({ content }: { content: string }) {
   );
 }
 
-/** Small clickable chip that opens the PDF in Zotero at the right page */
+/** Small clickable chip that opens the referenced source */
 function CitationChip({ citation }: { citation: ParsedCitation }) {
   const [showTooltip, setShowTooltip] = useState(false);
-  const { filePath, page, quotedText, label } = citation;
+  const { filePath, page, quotedText, label, kind } = citation;
 
   function handleClick() {
     if (!filePath) return;
@@ -700,7 +707,7 @@ function CitationChip({ citation }: { citation: ParsedCitation }) {
         onMouseLeave={() => setShowTooltip(false)}
         className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-xs font-medium hover:bg-blue-100 hover:border-blue-300 transition-colors cursor-pointer"
       >
-        <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 1h8a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z" /><path d="M5 5h6M5 8h6M5 11h3" /></svg>
+        {kind === "note" ? <IconNote className="w-3 h-3 shrink-0" /> : <svg className="w-3 h-3 shrink-0" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M4 1h8a1 1 0 011 1v12a1 1 0 01-1 1H4a1 1 0 01-1-1V2a1 1 0 011-1z" /><path d="M5 5h6M5 8h6M5 11h3" /></svg>}
         <span className="truncate max-w-[160px]">{shortLabel}</span>
         {page > 0 && <span className="text-blue-400 shrink-0">p.{page}</span>}
       </button>
@@ -775,6 +782,49 @@ function buildConversationHistory(chatMessages: ChatMessage[]): ConversationTurn
       role: message.role as "user" | "assistant",
       content: message.content,
     }));
+}
+
+function SourceSearchResultsCard({ payload }: { payload: unknown }) {
+  const results = (payload as Array<Record<string, unknown>>) || [];
+  if (!results.length) return null;
+  return (
+    <div className="flex flex-col gap-1 my-2">
+      <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider mb-1">Sources Found</span>
+      {results.slice(0, 6).map((result, i) => {
+        const sourceType = String(result.source_type || (result.absolute_path ? "note" : "paper"));
+        const isNote = sourceType === "note";
+        const filePath = (result.citation_path as string) || (result.file_path as string) || (result.absolute_path as string) || "";
+        const page = Number(result.page_start ?? result.citation_page ?? 0) || 0;
+        const excerpt = String(result.excerpt || result.chunk || "").slice(0, 220);
+        const secondary = isNote
+          ? `${result.vault_name ? `${String(result.vault_name)} · ` : ""}${String(result.relative_path || "")}`
+          : `${result.authors ? String(result.authors).split(";")[0].trim() : ""}${result.year ? ` · ${String(result.year)}` : ""}${page ? ` · p.${page}` : ""}`;
+
+        return (
+          <button
+            key={i}
+            type="button"
+            className="flex items-start gap-2 px-3 py-2 rounded-lg border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 transition-colors text-left"
+            onClick={() => {
+              if (!filePath) return;
+              if (!isNote && page > 0) {
+                void window.roxanne.openPdfAtPage(filePath, page);
+                return;
+              }
+              void window.roxanne.openPath(filePath);
+            }}
+          >
+            {isNote ? <IconNote className="shrink-0 text-amber-500 mt-0.5" /> : <IconDocument className="shrink-0 text-blue-500 mt-0.5" />}
+            <div className="flex-1 min-w-0">
+              <span className="text-xs font-semibold text-zinc-800 truncate block">{String(result.title || "Untitled")}</span>
+              {secondary && <span className="text-xs text-zinc-400 truncate block">{secondary}</span>}
+              {excerpt && <p className="text-xs text-zinc-600 leading-relaxed line-clamp-2 mt-1">{excerpt}</p>}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 /** Card for search_zotero results */
@@ -887,6 +937,9 @@ function AnnotationsResultCard({ payload }: { payload: unknown }) {
 /** Render tool result cards based on tool name */
 function ToolCard({ card }: { card: ToolResultCard }) {
   switch (card.tool) {
+    case "search_sources":
+    case "read_notes":
+      return <SourceSearchResultsCard payload={card.payload} />;
     case "search_zotero":
     case "search_zotero_metadata":
       return <SearchResultsCard payload={card.payload} />;
@@ -936,6 +989,7 @@ function groupMessages(messages: ChatMessage[]): MessageGroup[] {
 /** Pretty label for a tool name */
 function toolLabel(name: string): string {
   const labels: Record<string, string> = {
+    search_sources: "Searching sources",
     search_zotero: "Searching papers",
     search_zotero_metadata: "Searching metadata",
     retrieve_paper_chunks: "Reading paper chunks",
@@ -3036,6 +3090,7 @@ export function App() {
       // Speak tool status in voice mode (only if the LLM didn't already narrate)
       if (voiceModeRef.current && event.tool && !ttsPlayingRef.current && ttsQueueRef.current.length === 0) {
         const toolSpeech: Record<string, string> = {
+          search_sources: "Searching your sources.",
           search_zotero: "Searching now.",
           search_zotero_metadata: "Looking that up.",
           retrieve_paper_chunks: "Reading the paper.",
@@ -3073,7 +3128,7 @@ export function App() {
   }
 
   function applyToolPayload(event: StreamEvent, assistantMessageId: string) {
-    const showableTools = ["search_zotero", "search_zotero_metadata", "retrieve_paper_chunks", "get_paper_notes", "get_paper_annotations"];
+    const showableTools = ["search_sources", "read_notes", "search_zotero", "search_zotero_metadata", "retrieve_paper_chunks", "get_paper_notes", "get_paper_annotations"];
     if (event.tool && showableTools.includes(event.tool)) {
       // Insert a tool card into the chat
       setMessages((c) => [

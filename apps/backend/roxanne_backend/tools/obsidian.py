@@ -12,7 +12,7 @@ from roxanne_backend.tools.base import BaseTool, ToolExecutionError
 
 class ReadNotesTool(BaseTool):
     name = "read_notes"
-    description = "Search indexed Obsidian notes across all configured vaults."
+    description = "Semantic/vector search across indexed Obsidian note chunks across all configured vaults."
     input_schema = {
         "type": "object",
         "properties": {
@@ -34,6 +34,11 @@ class ReadNotesTool(BaseTool):
                 "vault_name": row["metadata"].get("vault_name"),
                 "relative_path": row["metadata"].get("relative_path"),
                 "absolute_path": row["metadata"].get("absolute_path"),
+                "chunk_index": row["metadata"].get("chunk_index"),
+                "total_chunks": row["metadata"].get("total_chunks"),
+                "citation_path": row["metadata"].get("absolute_path"),
+                "citation_page": None,
+                "chunk": row["document"],
                 "excerpt": row["document"][:600],
                 "score": row["distance"],
             }
@@ -110,4 +115,3 @@ class WriteNoteTool(BaseTool):
             if vault.id == vault_id:
                 return vault
         raise ToolExecutionError(f"No Obsidian vault found for vault_id={vault_id}.")
-
