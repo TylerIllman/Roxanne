@@ -18,6 +18,34 @@ need_command() {
   command -v "$1" >/dev/null 2>&1 || fail "Required command not found: $1"
 }
 
+install_cli_launcher() {
+  local target_path="$1"
+  local bin_dir launcher_path
+  bin_dir="${HOME}/.local/bin"
+  launcher_path="${bin_dir}/roxanne"
+
+  mkdir -p "$bin_dir"
+  cat >"$launcher_path" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+APP_PATH="${target_path}"
+if [[ \$# -eq 0 ]]; then
+  open "\$APP_PATH"
+else
+  open "\$APP_PATH" --args "\$@"
+fi
+EOF
+  chmod +x "$launcher_path"
+
+  case ":$PATH:" in
+    *":${bin_dir}:"*) ;;
+    *)
+      say "Installed terminal launcher at ${launcher_path}"
+      say "Add ${bin_dir} to your PATH to run 'roxanne' from any terminal."
+      ;;
+  esac
+}
+
 normalize_tag() {
   local value="$1"
   if [[ -z "$value" ]]; then
@@ -103,6 +131,7 @@ install_macos() {
   rm -rf "$target_path"
   ditto "$app_bundle" "$target_path"
   xattr -dr com.apple.quarantine "$target_path" || true
+  install_cli_launcher "$target_path"
 
   if [[ -z "$NO_OPEN" ]]; then
     say "Opening Roxanne"

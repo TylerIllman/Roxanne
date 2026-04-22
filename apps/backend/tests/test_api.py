@@ -46,7 +46,7 @@ class TestHealthEndpoint:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "ok"
-        assert "config_complete" in data
+        assert "app_home" in data
 
 
 # ── Config ─────────────────────────────────────────────────────────

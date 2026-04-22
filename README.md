@@ -44,6 +44,14 @@ $env:ROXANNE_NO_OPEN="1"; irm https://raw.githubusercontent.com/TylerIllman/Roxa
 
 On macOS, the CLI installer removes the quarantine attribute after installation so the app can open more cleanly than a normal browser download.
 
+After install, you can launch Roxanne from a terminal with:
+
+```bash
+roxanne
+```
+
+On macOS and Linux this launcher is installed into `~/.local/bin`. If `roxanne` is not found, add `~/.local/bin` to your `PATH`.
+
 ## Develop Locally
 
 ### Prerequisites
@@ -58,6 +66,18 @@ On macOS, the CLI installer removes the quarantine attribute after installation 
 git clone https://github.com/TylerIllman/Roxanne.git
 cd Roxanne
 ```
+
+### One-command setup
+
+The quickest source install is:
+
+```bash
+npm run setup
+```
+
+That creates `apps/backend/.venv`, installs the editable backend with test dependencies, and installs the desktop dependencies.
+
+If you prefer the manual steps instead:
 
 ### Set up the backend
 
@@ -83,16 +103,29 @@ npm install
 
 ### Run Roxanne in development
 
-Run the backend and desktop app in separate terminals:
+Open the full app from the repo:
 
 ```bash
-# Terminal 1
-source apps/backend/.venv/bin/activate
-python -m uvicorn roxanne_backend.main:app --host 127.0.0.1 --port 8000 --reload --app-dir apps/backend
-
-# Terminal 2
-npm --workspace apps/desktop run dev
+npm run open:desktop
 ```
+
+For easier debugging, these commands keep the backend and desktop shell separate:
+
+```bash
+npm run debug:backend
+npm run debug:frontend
+npm run debug:desktop
+npm run debug:full
+```
+
+What they do:
+
+- `npm run debug:backend` starts only the FastAPI backend with reload and debug logging.
+- `npm run debug:frontend` starts only the renderer dev server.
+- `npm run debug:desktop` starts the Electron shell and points it at an already-running backend on `http://127.0.0.1:8000`.
+- `npm run debug:full` runs the backend plus the Electron shell workflow together.
+
+Roxanne is not currently published as an `npm` or `pip` package, so the release installer remains the simplest no-build install path for end users. If you want a package-manager install later, that should be done as a separate publish/distribution change rather than just a repo script.
 
 ## Build The App Locally
 

@@ -72,3 +72,25 @@ class TestSecretStore:
         assert loaded is not None
         assert loaded.get_secret_value() == "sk-keyring-secret"
         assert store.fallback_store.get(ANTHROPIC_API_KEY) is None
+
+    def test_local_mode_skips_keyring_and_uses_local_store(self, app_paths: AppPaths, monkeypatch: pytest.MonkeyPatch):
+        class BlockingKeyring:
+            def get_password(self, _service: str, _username: str):
+                raise AssertionError("keyring should not be used in local mode")
+
+            def set_password(self, _service: str, _username: str, _value: str):
+                raise AssertionError("keyring should not be used in local mode")
+
+            def delete_password(self, _service: str, _username: str):
+                raise AssertionError("keyring should not be used in local mode")
+
+        monkeypatch.setattr(secret_store_module, "keyring", BlockingKeyring())
+        monkeypatch.setenv("ROXANNE_SECRET_STORE", "local")
+
+        store = SecretStore(app_paths)
+        store.set(ANTHROPIC_API_KEY, "sk-local-mode")
+
+        loaded = store.get(ANTHROPIC_API_KEY)
+
+        assert loaded is not None
+        assert loaded.get_secret_value() == "sk-local-mode"

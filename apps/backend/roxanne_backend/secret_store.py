@@ -5,7 +5,9 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import secrets
+import threading
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -28,6 +30,10 @@ SERVICE_NAME = "RoxanneAssistant"
 ANTHROPIC_API_KEY = "anthropic_api_key"
 OPENAI_EMBEDDING_API_KEY = "openai_embedding_api_key"
 _SECRET_FILE_VERSION = 1
+SECRET_STORE_MODE_ENV = "ROXANNE_SECRET_STORE"
+KEYRING_TIMEOUT_ENV = "ROXANNE_KEYRING_TIMEOUT_SECONDS"
+DEFAULT_SECRET_STORE_MODE = "auto"
+DEFAULT_KEYRING_TIMEOUT_SECONDS = 0.75
 
 
 def unwrap_secret(value: Optional[SecretStr]) -> Optional[str]:
@@ -139,36 +145,139 @@ class SecretStore:
         self.service_name = service_name
         self.paths = paths or AppPaths()
         self.fallback_store = LocalSecretFileStore(self.paths.secrets_path, self.paths.secrets_key_path)
+        self.mode = self._resolve_mode(os.getenv(SECRET_STORE_MODE_ENV))
+        self.keyring_timeout_seconds = self._resolve_timeout(os.getenv(KEYRING_TIMEOUT_ENV))
 
     def is_available(self) -> bool:
         return True
 
     def get(self, key: str) -> Optional[SecretStr]:
-        if keyring is not None:
-            try:
-                value = keyring.get_password(self.service_name, key)
-                if value:
-                    return SecretStr(value)
-            except KeyringError as exc:  # pragma: no cover - backend specific
-                logger.warning("Keyring read failed for %s, falling back to local secret store: %s", key, exc)
-        return self.fallback_store.get(key)
+        if self.mode != "local":
+            value = self._get_from_keyring(key)
+            if value is not None:
+                return value
+            return self.fallback_store.get(key)
+
+        local_value = self.fallback_store.get(key)
+        if local_value is not None:
+            return local_value
+
+        if not self._should_use_keyring():
+            return None
+
+        value = self._get_from_keyring(key)
+        if value is not None and self.mode == "local":
+            self.fallback_store.set(key, value.get_secret_value())
+        return value
 
     def set(self, key: str, value: str) -> None:
-        if keyring is not None:
-            try:
-                keyring.set_password(self.service_name, key, value)
-                self.fallback_store.delete(key)
-                return
-            except KeyringError as exc:  # pragma: no cover - backend specific
-                logger.warning("Keyring write failed for %s, falling back to local secret store: %s", key, exc)
+        if self.mode == "local":
+            self.fallback_store.set(key, value)
+            return
+
+        if self._set_in_keyring(key, value):
+            self.fallback_store.delete(key)
+            return
+
         self.fallback_store.set(key, value)
 
     def delete(self, key: str) -> None:
-        if keyring is not None:
-            try:
-                keyring.delete_password(self.service_name, key)
-            except PasswordDeleteError:
-                pass
-            except KeyringError as exc:  # pragma: no cover - backend specific
-                logger.warning("Keyring delete failed for %s, falling back to local secret store cleanup: %s", key, exc)
+        if self.mode != "local":
+            self._delete_from_keyring(key)
         self.fallback_store.delete(key)
+
+    def _resolve_mode(self, raw_mode: Optional[str]) -> str:
+        normalized = (raw_mode or DEFAULT_SECRET_STORE_MODE).strip().lower()
+        if normalized in {"auto", "keyring", "local"}:
+            return normalized
+        logger.warning("Unknown secret store mode '%s', falling back to %s.", raw_mode, DEFAULT_SECRET_STORE_MODE)
+        return DEFAULT_SECRET_STORE_MODE
+
+    def _resolve_timeout(self, raw_timeout: Optional[str]) -> float:
+        if raw_timeout is None:
+            return DEFAULT_KEYRING_TIMEOUT_SECONDS
+        try:
+            return max(float(raw_timeout), 0.05)
+        except ValueError:
+            logger.warning(
+                "Invalid %s value '%s', using %.2f seconds.",
+                KEYRING_TIMEOUT_ENV,
+                raw_timeout,
+                DEFAULT_KEYRING_TIMEOUT_SECONDS,
+            )
+            return DEFAULT_KEYRING_TIMEOUT_SECONDS
+
+    def _should_use_keyring(self) -> bool:
+        return keyring is not None and self.mode in {"auto", "keyring", "local"}
+
+    def _get_from_keyring(self, key: str) -> Optional[SecretStr]:
+        if keyring is None:
+            return None
+        try:
+            value = self._run_keyring_operation(
+                lambda: keyring.get_password(self.service_name, key),
+                action="read",
+                key=key,
+            )
+            if value:
+                return SecretStr(value)
+        except KeyringError as exc:  # pragma: no cover - backend specific
+            logger.warning("Keyring read failed for %s, falling back to local secret store: %s", key, exc)
+        return None
+
+    def _set_in_keyring(self, key: str, value: str) -> bool:
+        if keyring is None:
+            return False
+        try:
+            self._run_keyring_operation(
+                lambda: keyring.set_password(self.service_name, key, value),
+                action="write",
+                key=key,
+            )
+            return True
+        except KeyringError as exc:  # pragma: no cover - backend specific
+            logger.warning("Keyring write failed for %s, falling back to local secret store: %s", key, exc)
+            return False
+
+    def _delete_from_keyring(self, key: str) -> None:
+        if keyring is None:
+            return
+        try:
+            self._run_keyring_operation(
+                lambda: keyring.delete_password(self.service_name, key),
+                action="delete",
+                key=key,
+            )
+        except PasswordDeleteError:
+            pass
+        except KeyringError as exc:  # pragma: no cover - backend specific
+            logger.warning("Keyring delete failed for %s, falling back to local secret store cleanup: %s", key, exc)
+
+    def _run_keyring_operation(self, operation, *, action: str, key: str):
+        result: Dict[str, Any] = {"done": False, "value": None, "error": None}
+
+        def target() -> None:
+            try:
+                result["value"] = operation()
+            except Exception as exc:  # pragma: no cover - backend specific
+                result["error"] = exc
+            finally:
+                result["done"] = True
+
+        thread = threading.Thread(target=target, daemon=True)
+        thread.start()
+        thread.join(self.keyring_timeout_seconds)
+
+        if not result["done"]:
+            logger.warning(
+                "Keyring %s timed out for %s after %.2fs; using local secret store instead.",
+                action,
+                key,
+                self.keyring_timeout_seconds,
+            )
+            return None
+
+        if result["error"] is not None:
+            raise result["error"]
+
+        return result["value"]

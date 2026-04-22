@@ -6,8 +6,14 @@
     "apps/desktop"
   ],
   "scripts": {
+    "setup": "node ./scripts/dev-setup.mjs",
+    "open:desktop": "npm --workspace apps/desktop run dev",
+    "debug:frontend": "npm --workspace apps/desktop run dev:renderer",
+    "debug:desktop": "npm --workspace apps/desktop run dev:external-backend",
+    "debug:backend": "node ./scripts/run-backend-dev.mjs",
+    "debug:full": "concurrently -k \"npm:debug:backend\" \"npm:debug:desktop\"",
     "dev:desktop": "npm --workspace apps/desktop run dev",
-    "dev:backend": "python3 -m uvicorn roxanne_backend.main:app --reload --app-dir apps/backend",
+    "dev:backend": "node ./scripts/run-backend-dev.mjs",
     "build:backend-binary": "node ./scripts/build-backend-binary.mjs",
     "build:desktop": "npm --workspace apps/desktop run build",
     "dist:desktop": "npm --workspace apps/desktop run dist",

@@ -20,20 +20,26 @@ async function parseJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-export async function waitForBackend(baseUrl: string, retries = 30): Promise<void> {
+export async function waitForBackend(baseUrl: string, retries = 120, intervalMs = 500): Promise<void> {
+  let lastError = "";
+
   for (let attempt = 0; attempt < retries; attempt += 1) {
     try {
       const response = await fetch(`${baseUrl}/health`);
       if (response.ok) {
         return;
       }
+      lastError = `HTTP ${response.status}`;
     } catch {
       // The backend may still be starting up.
+      lastError = "connection failed";
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 500));
+    await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
   }
 
-  throw new Error("The local backend did not become ready in time.");
+  throw new Error(
+    `The local backend did not become ready in time at ${baseUrl}${lastError ? ` (${lastError})` : ""}.`
+  );
 }
 
 export async function getConfig(baseUrl: string): Promise<PublicConfig> {

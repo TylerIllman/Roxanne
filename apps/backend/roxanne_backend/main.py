@@ -183,10 +183,8 @@ async def _start_auto_indexer():
 
 @app.get("/health")
 async def health() -> Dict[str, object]:
-    config = services.load_config()
     return {
         "status": "ok",
-        "config_complete": config.is_complete(),
         "app_home": str(services.paths.root),
     }
 

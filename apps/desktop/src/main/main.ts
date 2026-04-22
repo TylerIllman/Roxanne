@@ -17,6 +17,13 @@ function backendWorkingDirectory() {
   return path.join(repoRoot(), "apps", "backend");
 }
 
+function developmentPythonPath() {
+  const venvPython = process.platform === "win32"
+    ? path.join(backendWorkingDirectory(), ".venv", "Scripts", "python.exe")
+    : path.join(backendWorkingDirectory(), ".venv", "bin", "python3");
+  return fs.existsSync(venvPython) ? venvPython : "python3";
+}
+
 function desktopProjectDirectory() {
   return path.join(repoRoot(), "apps", "desktop");
 }
@@ -41,11 +48,13 @@ function backendEnvironment() {
     ROXANNE_HOME: process.env.ROXANNE_HOME || app.getPath("userData"),
     ROXANNE_HOST: "127.0.0.1",
     ROXANNE_PORT: "8000",
+    ROXANNE_SECRET_STORE: process.env.ROXANNE_SECRET_STORE || "local",
+    ROXANNE_DESKTOP_APP: "1",
   };
 }
 
 function startBackend() {
-  if (backendProcess) {
+  if (backendProcess || process.env.ROXANNE_SKIP_BACKEND_SPAWN === "1") {
     return;
   }
 
@@ -70,12 +79,8 @@ function startBackend() {
       env: backendEnvironment(),
     });
   } else {
-    // Use the project venv Python if it exists, otherwise fall back to python3
-    const venvPython = path.join(backendWorkingDirectory(), ".venv", "bin", "python3");
-    const pythonPath = fs.existsSync(venvPython) ? venvPython : "python3";
-
     backendProcess = spawn(
-      pythonPath,
+      developmentPythonPath(),
       [
         "-m",
         "uvicorn",
@@ -103,6 +108,14 @@ function startBackend() {
   });
 
   backendProcess.on("exit", () => {
+    backendProcess = null;
+  });
+
+  backendProcess.on("error", (error) => {
+    dialog.showErrorBox(
+      "Backend Launch Failed",
+      `Roxanne could not start its local backend.\n\n${error.message}`
+    );
     backendProcess = null;
   });
 }
