@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "roxanne-backend"
-version = "0.1.0"
+version = "0.1.4"
 description = "Backend services for the Roxanne personal research copilot"
 requires-python = ">=3.9"
 dependencies = [

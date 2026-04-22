@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: roxanne-backend
-Version: 0.1.0
+Version: 0.1.4
 Summary: Backend services for the Roxanne personal research copilot
 Requires-Python: >=3.9
 Requires-Dist: aiofiles>=24.1.0
