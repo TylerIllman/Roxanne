@@ -37,6 +37,8 @@ export type ConfigForm = {
     piper_voice_model_path: string;
     voice_id: string;
     speed: number;
+    unmute_url: string;
+    tts_provider: "piper" | "unmute";
   };
   obsidian_vaults: VaultConfig[];
 };
@@ -66,6 +68,8 @@ export type PublicConfig = {
     piper_voice_model_path?: string | null;
     voice_id?: string;
     speed?: number;
+    unmute_url?: string | null;
+    tts_provider?: "piper" | "unmute";
   };
   obsidian_vaults: VaultConfig[];
   is_complete: boolean;

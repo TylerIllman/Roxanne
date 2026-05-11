@@ -19,6 +19,7 @@ dependencies = [
   "keyring>=25.6.0",
   "openai>=1.0.0",
   "orjson>=3.10.0",
+  "piper-tts>=1.4.0",
   "pydantic>=2.10.0",
   "pydantic-settings>=2.7.0",
   "pymupdf>=1.24.0",

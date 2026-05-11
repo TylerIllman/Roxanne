@@ -48,6 +48,7 @@ import { Select } from "./components/ui/select";
 import { Separator } from "./components/ui/separator";
 import { Textarea } from "./components/ui/textarea";
 import { cn } from "./lib/cn";
+import { UnmuteSession } from "./voice/UnmuteSession";
 import type {
   ChatMessage,
   ConversationTurn,
@@ -80,7 +81,7 @@ const EMPTY_CONFIG: ConfigForm = {
   anthropic: { provider: "anthropic", api_key: "", model: "claude-sonnet-4-20250514", max_tokens: 1400, max_tool_loops: 12, base_url: "" },
   zotero: { database_path: "", storage_path: "" },
   embeddings: { provider: "fastembed", model: "BAAI/bge-base-en-v1.5", openai_api_key: "", openai_base_url: "" },
-  speech: { stt_model: "small", piper_executable_path: "", piper_voice_model_path: "", voice_id: "en_US-amy-medium", speed: 1.15 },
+  speech: { stt_model: "small", piper_executable_path: "", piper_voice_model_path: "", voice_id: "en_US-amy-medium", speed: 1.15, unmute_url: "", tts_provider: "piper" },
   obsidian_vaults: [],
 };
 
@@ -131,6 +132,8 @@ function publicToForm(config: PublicConfig): ConfigForm {
       piper_voice_model_path: config.speech.piper_voice_model_path || "",
       voice_id: config.speech.voice_id || "en_US-amy-medium",
       speed: config.speech.speed ?? 1.15,
+      unmute_url: config.speech.unmute_url || "",
+      tts_provider: config.speech.tts_provider || "piper",
     },
     obsidian_vaults: config.obsidian_vaults.length ? config.obsidian_vaults : [blankVault()],
   };
@@ -162,6 +165,8 @@ function sanitizeConfig(config: ConfigForm): ConfigForm {
       piper_voice_model_path: config.speech.piper_voice_model_path.trim(),
       voice_id: config.speech.voice_id || "en_US-amy-medium",
       speed: config.speech.speed ?? 1.15,
+      unmute_url: (config.speech.unmute_url || "").trim(),
+      tts_provider: config.speech.tts_provider || "piper",
     },
     obsidian_vaults: config.obsidian_vaults
       .filter((v) => v.name.trim() || v.path.trim())
@@ -2089,7 +2094,20 @@ function IndexBrowser({ baseUrl, onClose }: { baseUrl: string; onClose: () => vo
 /*  Settings panel                                                     */
 /* ------------------------------------------------------------------ */
 
-type VoiceInfo = { id: string; label: string; installed: boolean };
+type VoiceInfo = {
+  id: string;
+  label: string;
+  installed: boolean;
+  // Unmute-only: full persona payload, needed for session.update WebSocket frame
+  unmute?: { instructions: unknown; voice: string };
+};
+
+type UnmuteVoice = {
+  name: string;
+  good?: boolean;
+  instructions: unknown;
+  source: { source_type: string; path_on_server: string; description?: string };
+};
 type STTModelLocal = { id: string; label: string; size_mb: number; lang: string; installed: boolean };
 
 function SpeechSettingsSection({ baseUrl, configForm, setConfigForm }: { baseUrl: string; configForm: ConfigForm; setConfigForm: Dispatch<SetStateAction<ConfigForm>> }) {
@@ -2102,13 +2120,103 @@ function SpeechSettingsSection({ baseUrl, configForm, setConfigForm }: { baseUrl
   const [sttModels, setSTTModels] = useState<STTModelLocal[]>([]);
   const [downloadingSTT, setDownloadingSTT] = useState<string | null>(null);
   const [sttProgress, setSTTProgress] = useState<{ detail: string; progress: number } | null>(null);
+  const [testStatus, setTestStatus] = useState<string>("");
+
+  async function testUnmuteConnection() {
+    const url = configForm.speech?.unmute_url;
+    const voiceId = configForm.speech?.voice_id;
+    if (!url || !voiceId) return;
+    const persona = voices.find((v) => v.id === voiceId);
+    if (!persona?.unmute) {
+      setTestStatus("");
+      setError("Persona not loaded — re-pick the voice.");
+      return;
+    }
+    setError("");
+    setTestStatus("Connecting…");
+    let resolved = false;
+    const session = new UnmuteSession({
+      baseUrl: url,
+      instructions: persona.unmute.instructions,
+      voice: persona.unmute.voice,
+      onEvent: (ev) => {
+        if (ev.type === "session.updated" && !resolved) {
+          resolved = true;
+          setTestStatus("✓ Connected");
+          setTimeout(() => session.close(), 500);
+          setTimeout(() => setTestStatus(""), 4000);
+        } else if (ev.type === "error" && !resolved) {
+          resolved = true;
+          const msg = (ev as { error?: { message?: string } }).error?.message || "Unmute returned error";
+          setTestStatus("");
+          setError(`Unmute: ${msg}`);
+          session.close();
+        }
+      },
+      onClose: () => {
+        if (!resolved) {
+          setTestStatus("");
+          setError("Unmute closed connection before session.updated.");
+        }
+      },
+      onError: () => {
+        if (!resolved) {
+          resolved = true;
+          setTestStatus("");
+          setError("Could not open WebSocket to Unmute. Check the URL and that the server is reachable.");
+        }
+      },
+    });
+    try {
+      await session.start();
+      setTestStatus("Waiting for session.updated…");
+      // Safety timeout
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          setTestStatus("");
+          setError("Timed out waiting for session.updated.");
+          session.close();
+        }
+      }, 8000);
+    } catch (e) {
+      setTestStatus("");
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  const ttsProvider = configForm.speech?.tts_provider || "piper";
 
   useEffect(() => {
     if (!baseUrl) return;
     getSpeechStatus(baseUrl).then(setStatus).catch(() => {});
-    fetch(`${baseUrl}/api/voices`).then((r) => r.json()).then((d) => setVoices(d.voices || [])).catch(() => {});
     fetch(`${baseUrl}/api/stt/models`).then((r) => r.json()).then((d) => setSTTModels(d.models || [])).catch(() => {});
   }, [baseUrl]);
+
+  useEffect(() => {
+    if (!baseUrl) return;
+    setError("");
+    if (ttsProvider === "unmute") {
+      fetch(`${baseUrl}/api/voices/unmute`)
+        .then((r) => r.json())
+        .then((d: { voices?: UnmuteVoice[]; error?: string }) => {
+          if (d.error) setError(d.error);
+          const list = (d.voices || []).map((v) => ({
+            id: v.name,
+            label: v.name,
+            installed: true,
+            unmute: { instructions: v.instructions, voice: v.source?.path_on_server ?? v.name },
+          }));
+          setVoices(list);
+        })
+        .catch((e) => setError(`Could not fetch Unmute voices: ${e}`));
+    } else {
+      fetch(`${baseUrl}/api/voices`)
+        .then((r) => r.json())
+        .then((d) => setVoices(d.voices || []))
+        .catch(() => {});
+    }
+  }, [baseUrl, ttsProvider]);
 
   async function handleInstall() {
     if (!baseUrl) return;
@@ -2295,9 +2403,38 @@ function SpeechSettingsSection({ baseUrl, configForm, setConfigForm }: { baseUrl
 
       <Separator />
 
-      {/* ── TTS Voice Selection ── */}
-      <Field label="Text-to-speech voice" hint="Choose a voice for spoken responses. Click download to install new voices.">
+      {/* ── TTS Provider toggle (Piper local vs Unmute remote) ── */}
+      <Field label="Text-to-speech provider" hint="Piper runs locally with the voices below. Unmute streams from a remote Kyutai server (URL set further down).">
+        <div className="inline-flex rounded-lg border border-zinc-200 p-0.5 bg-zinc-50">
+          {(["piper", "unmute"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={cn(
+                "px-3 py-1 text-xs font-semibold rounded-md transition-colors",
+                ttsProvider === p ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700"
+              )}
+              onClick={() => setConfigForm((c) => ({ ...c, speech: { ...c.speech, tts_provider: p, voice_id: "" } }))}
+            >
+              {p === "piper" ? "Piper (local)" : "Unmute (remote)"}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      {/* ── Voice list (provider-aware) ── */}
+      <Field
+        label={ttsProvider === "unmute" ? "Unmute persona" : "Text-to-speech voice"}
+        hint={ttsProvider === "unmute"
+          ? "Personas live on your Unmute server. Each one has its own voice + system prompt."
+          : "Choose a voice for spoken responses. Click download to install new voices."}
+      >
         <div className="flex flex-col gap-2">
+          {ttsProvider === "unmute" && voices.length === 0 && (
+            <p className="text-xs text-zinc-400 text-center py-2">
+              {error || "Loading personas from Unmute…"}
+            </p>
+          )}
           {voices.map((v) => (
             <div
               key={v.id}
@@ -2317,11 +2454,13 @@ function SpeechSettingsSection({ baseUrl, configForm, setConfigForm }: { baseUrl
             >
               <div className="flex-1 min-w-0">
                 <span className={cn("font-semibold", v.installed ? "text-zinc-900" : "text-zinc-500")}>{v.label}</span>
-                <span className="ml-2 text-zinc-400 font-mono text-xs">{v.id}</span>
+                {v.id !== v.label && (
+                  <span className="ml-2 text-zinc-400 font-mono text-xs">{v.id}</span>
+                )}
               </div>
               {v.installed ? (
                 <span className={cn("text-xs font-semibold px-2 py-0.5 rounded-full shrink-0", v.id === currentVoice ? "bg-zinc-900 text-white" : "bg-emerald-100 text-emerald-700")}>
-                  {v.id === currentVoice ? "Active" : "Installed"}
+                  {v.id === currentVoice ? "Active" : (ttsProvider === "unmute" ? "Available" : "Installed")}
                 </span>
               ) : (
                 <Button
@@ -2356,6 +2495,40 @@ function SpeechSettingsSection({ baseUrl, configForm, setConfigForm }: { baseUrl
           <span className="text-xs text-zinc-400 w-8">2.0x</span>
         </div>
       </Field>
+
+      <Separator />
+
+      {/* Unmute (Kyutai) — alternative voice agent */}
+      <Field label="Unmute server URL" hint="Optional. Point at a Kyutai Unmute deployment (e.g. http://host:port). Used by the 'Voice (Unmute)' button below.">
+        <Input
+          value={configForm.speech?.unmute_url ?? ""}
+          placeholder="http://54.92.132.37"
+          onChange={(e) => setConfigForm((c) => ({ ...c, speech: { ...c.speech, unmute_url: e.target.value } }))}
+        />
+      </Field>
+      <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={!configForm.speech?.unmute_url}
+          onClick={async () => {
+            const url = configForm.speech?.unmute_url;
+            if (!url) return;
+            const result = await window.roxanne?.openUnmute(url);
+            if (result && !result.ok) setError(result.error || "Could not open Unmute");
+          }}
+        >
+          Open Unmute voice mode →
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={ttsProvider !== "unmute" || !configForm.speech?.unmute_url || !currentVoice}
+          onClick={() => testUnmuteConnection()}
+        >
+          {testStatus ? testStatus : "Test Unmute connection"}
+        </Button>
+      </div>
 
       {error && <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
     </section>
@@ -3481,6 +3654,112 @@ export function App() {
   const wsRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const scriptNodeRef = useRef<ScriptProcessorNode | null>(null);
+  const unmuteSessionRef = useRef<UnmuteSession | null>(null);
+  const unmuteCurrentResponseIdRef = useRef<string | null>(null);
+
+  /** Pick a persona from the saved Unmute voices and open a real-time voice
+   *  session against the user's Unmute server. STT + LLM + TTS all happen
+   *  in Unmute; Roxanne is just the audio I/O shell. */
+  async function startUnmuteVoiceConversation() {
+    console.log("[unmute-voice] startUnmuteVoiceConversation: begin", { baseUrl });
+    if (!baseUrl) {
+      appendStatusMessage(setMessages, "Voice unavailable: backend base URL not set.");
+      return;
+    }
+    // Always pull fresh config — the form state can be stale.
+    let url = "";
+    let voiceId = "";
+    try {
+      const fresh = await fetch(`${baseUrl}/api/config`).then((r) => r.json());
+      url = (fresh?.speech?.unmute_url || "").trim();
+      voiceId = fresh?.speech?.voice_id || "";
+      console.log("[unmute-voice] fresh config:", { url, voiceId });
+    } catch (e) {
+      console.warn("[unmute-voice] could not load config", e);
+      url = configForm.speech?.unmute_url?.trim() || "";
+      voiceId = configForm.speech?.voice_id || "";
+    }
+    if (!url) {
+      appendStatusMessage(setMessages, "Set an Unmute server URL in Settings → Speech first.");
+      return;
+    }
+    if (!voiceId) {
+      appendStatusMessage(setMessages, "Pick an Unmute persona in Settings → Speech first.");
+      return;
+    }
+
+    voiceModeRef.current = true;
+    setVoiceMode(true);
+    voiceStateRef.current = "listening";
+    setVoiceState("listening");
+    setLiveTranscript("Connecting to Unmute…");
+    appendStatusMessage(setMessages, `Connecting to Unmute (${url}) as "${voiceId}"…`);
+
+    try {
+      const resp = await fetch(`${baseUrl}/api/voices/unmute`);
+      const data = (await resp.json()) as { voices?: Array<{ name: string; instructions: unknown; source?: { path_on_server?: string } }>; error?: string };
+      console.log("[unmute-voice] /api/voices/unmute returned", { error: data.error, count: (data.voices || []).length });
+      if (data.error) throw new Error(data.error);
+      const persona = (data.voices || []).find((v) => v.name === voiceId);
+      if (!persona) {
+        throw new Error(`Unmute persona "${voiceId}" not found on server. Re-pick the voice in Settings.`);
+      }
+      console.log("[unmute-voice] picked persona", persona.name, "voice path:", persona.source?.path_on_server);
+
+      const session = new UnmuteSession({
+        baseUrl: url,
+        instructions: persona.instructions,
+        voice: persona.source?.path_on_server || persona.name,
+        enableAudio: true,
+        onEvent: (ev) => {
+          if (ev.type === "session.updated") {
+            voiceStateRef.current = "active";
+            setVoiceState("active");
+            setLiveTranscript("Listening…");
+          } else if (ev.type === "conversation.item.input_audio_transcription.delta") {
+            const delta = (ev as { delta?: string }).delta || "";
+            if (delta) setLiveTranscript((t) => (t === "Listening…" ? delta : t + delta));
+          } else if (ev.type === "response.created") {
+            setIsSpeaking(true);
+            // Start a fresh assistant message that response.text.delta deltas
+            // will accumulate into.
+            const id = makeId();
+            unmuteCurrentResponseIdRef.current = id;
+            setMessages((c) => [...c, { id, role: "assistant", content: "" }]);
+          } else if (ev.type === "response.text.delta") {
+            const delta = (ev as { delta?: string }).delta || "";
+            const id = unmuteCurrentResponseIdRef.current;
+            if (delta && id) {
+              setMessages((c) => c.map((m) => (m.id === id ? { ...m, content: m.content + delta } : m)));
+            }
+          } else if (ev.type === "input_audio_buffer.speech_started") {
+            // User started speaking — stop any in-flight playback (barge-in).
+            session.resetPlayback();
+            setIsSpeaking(false);
+          } else if (ev.type === "error") {
+            const msg = (ev as { error?: { message?: string } }).error?.message || "Unmute error";
+            appendStatusMessage(setMessages, `Unmute: ${msg}`);
+          }
+        },
+        onClose: () => {
+          if (voiceModeRef.current) {
+            // Server closed unexpectedly while we still wanted voice
+            stopVoiceConversation();
+          }
+        },
+        onError: () => {
+          appendStatusMessage(setMessages, "Unmute WebSocket error. Check the server URL and that the box is reachable.");
+          stopVoiceConversation();
+        },
+      });
+      unmuteSessionRef.current = session;
+      await session.start();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      appendStatusMessage(setMessages, `Could not start Unmute voice: ${msg}`);
+      stopVoiceConversation();
+    }
+  }
 
   async function startVoiceConversation() {
     if (!baseUrl) return;
@@ -3692,6 +3971,12 @@ export function App() {
     setVoiceState("listening");
     clearVoiceSendTimer();
     stopSpeaking();
+
+    // Close any in-flight Unmute session
+    if (unmuteSessionRef.current) {
+      try { unmuteSessionRef.current.close(); } catch {}
+      unmuteSessionRef.current = null;
+    }
 
     if (voiceAnimFrameRef.current) {
       cancelAnimationFrame(voiceAnimFrameRef.current);
@@ -3975,7 +4260,29 @@ export function App() {
                         ? "bg-amber-50 border-amber-300 text-amber-700"
                         : "bg-white border-zinc-200 text-zinc-500 hover:border-zinc-300 hover:text-zinc-900"
                   )}
-                  onClick={() => voiceMode ? stopVoiceConversation() : void startVoiceConversation()}
+                  onClick={async () => {
+                    if (voiceMode) {
+                      stopVoiceConversation();
+                      return;
+                    }
+                    // Re-fetch saved config so we don't dispatch based on
+                    // stale form state (curl-edits or other-device changes
+                    // wouldn't otherwise be reflected).
+                    let provider: string = configForm.speech?.tts_provider || "piper";
+                    try {
+                      const fresh = await fetch(`${baseUrl}/api/config`).then((r) => r.json());
+                      provider = fresh?.speech?.tts_provider || provider;
+                      console.log("[voice-button] tts_provider from saved config:", provider, "form:", configForm.speech?.tts_provider);
+                    } catch (e) {
+                      console.warn("[voice-button] could not refresh config", e);
+                    }
+                    appendStatusMessage(setMessages, `Starting voice (provider: ${provider})…`);
+                    if (provider === "unmute") {
+                      void startUnmuteVoiceConversation();
+                    } else {
+                      void startVoiceConversation();
+                    }
+                  }}
                 >
                   <IconMic className="w-3.5 h-3.5" />
                   {voiceMode

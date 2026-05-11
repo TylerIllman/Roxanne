@@ -584,6 +584,211 @@ async def list_voices() -> Dict[str, object]:
     return services.speech.list_voices()
 
 
+# ── OpenAI-compatible facade ──────────────────────────────────────────────
+# This exposes /v1/chat/completions in the same shape as OpenAI (and what
+# Unmute / vLLM / OpenWebUI / the AI SDK expect). Internally it runs the same
+# tool-augmented orchestrator that powers /api/chat/stream, so the assistant
+# can call into Zotero/Obsidian search and the answer streamed back is
+# already grounded. Tools are not exposed in the response — Unmute treats the
+# LLM as opaque text-in/text-out.
+
+@app.get("/v1/models")
+async def list_openai_models() -> Dict[str, object]:
+    """Return a single model id so OpenAI-compatible clients are happy."""
+    config = services.load_config()
+    model_id = (config.anthropic.model or "roxanne").strip() or "roxanne"
+    return {
+        "object": "list",
+        "data": [
+            {"id": model_id, "object": "model", "created": 0, "owned_by": "roxanne"},
+            # Also accept a stable alias so callers can hard-code it.
+            {"id": "roxanne", "object": "model", "created": 0, "owned_by": "roxanne"},
+        ],
+    }
+
+
+@app.post("/v1/chat/completions")
+async def openai_chat_completions(request: dict) -> object:
+    """OpenAI-compatible chat completions, backed by Roxanne's orchestrator.
+
+    Input shape: {model, messages: [{role, content}], stream?: bool, ...}
+    Output: SSE stream of chat.completion.chunk events when stream=true,
+            else a single chat.completion object.
+    Auth: optional bearer token check. Set ROXANNE_OPENAI_FACADE_TOKEN to
+            require it; without that env var the endpoint accepts any caller
+            on localhost. (The route is bound to 127.0.0.1 by default.)
+    """
+    messages = request.get("messages", []) or []
+    if not messages or not isinstance(messages, list):
+        return JSONResponse(status_code=400, content={"error": "messages required"})
+
+    # Split history vs. final user turn.
+    last = messages[-1]
+    if last.get("role") != "user":
+        return JSONResponse(status_code=400, content={"error": "last message must be role=user"})
+    user_content = last.get("content", "")
+    if isinstance(user_content, list):
+        # OpenAI multi-part content — concat any text parts.
+        user_content = "".join(p.get("text", "") for p in user_content if p.get("type") == "text")
+    if not isinstance(user_content, str) or not user_content.strip():
+        return JSONResponse(status_code=400, content={"error": "empty user content"})
+
+    history: list[ConversationTurn] = []
+    for m in messages[:-1]:
+        role = m.get("role")
+        if role not in ("user", "assistant"):
+            continue  # skip system / tool turns; orchestrator builds its own system prompt
+        c = m.get("content", "")
+        if isinstance(c, list):
+            c = "".join(p.get("text", "") for p in c if p.get("type") == "text")
+        if isinstance(c, str) and c.strip():
+            history.append(ConversationTurn(role=role, content=c))
+
+    chat_req = ChatRequest(message=user_content, history=history, voice_mode=False)
+    orchestrator = services.orchestrator()
+    completion_id = f"chatcmpl-{uuid4().hex[:24]}"
+    created_ts = int(asyncio.get_event_loop().time())
+    model_id = request.get("model") or services.load_config().anthropic.model or "roxanne"
+
+    stream = bool(request.get("stream"))
+
+    if stream:
+        async def sse():
+            # Initial role chunk so OpenAI clients render correctly.
+            first = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": created_ts,
+                "model": model_id,
+                "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
+            }
+            yield f"data: {json.dumps(first)}\n\n".encode()
+
+            finish_reason = "stop"
+            error_message: Optional[str] = None
+            try:
+                async for raw in orchestrator.stream(chat_req):
+                    try:
+                        ev = json.loads(raw.decode("utf-8").strip())
+                    except Exception:
+                        continue
+                    t = ev.get("type")
+                    if t == "assistant_delta":
+                        delta = ev.get("delta") or ""
+                        if not delta:
+                            continue
+                        chunk = {
+                            "id": completion_id,
+                            "object": "chat.completion.chunk",
+                            "created": created_ts,
+                            "model": model_id,
+                            "choices": [{"index": 0, "delta": {"content": delta}, "finish_reason": None}],
+                        }
+                        yield f"data: {json.dumps(chunk)}\n\n".encode()
+                    elif t == "error":
+                        error_message = ev.get("message") or "orchestrator error"
+                        finish_reason = "stop"
+                        break
+                    # status / tool_call / tool_result / assistant_done — ignored
+                    # for the OpenAI facade; only the user-visible deltas matter.
+            except Exception as exc:
+                error_message = f"facade error: {exc}"
+
+            if error_message:
+                err_chunk = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "created": created_ts,
+                    "model": model_id,
+                    "choices": [{"index": 0, "delta": {"content": f"[error] {error_message}"}, "finish_reason": "stop"}],
+                }
+                yield f"data: {json.dumps(err_chunk)}\n\n".encode()
+
+            final = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": created_ts,
+                "model": model_id,
+                "choices": [{"index": 0, "delta": {}, "finish_reason": finish_reason}],
+            }
+            yield f"data: {json.dumps(final)}\n\n".encode()
+            yield b"data: [DONE]\n\n"
+
+        return StreamingResponse(sse(), media_type="text/event-stream", headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        })
+
+    # Non-streaming path — collect deltas into one body and return.
+    parts: list[str] = []
+    error_message: Optional[str] = None
+    async for raw in orchestrator.stream(chat_req):
+        try:
+            ev = json.loads(raw.decode("utf-8").strip())
+        except Exception:
+            continue
+        t = ev.get("type")
+        if t == "assistant_delta":
+            d = ev.get("delta") or ""
+            if d:
+                parts.append(d)
+        elif t == "assistant_done":
+            payload = ev.get("payload") or {}
+            msg = payload.get("message") or ""
+            if msg:
+                parts = [msg]
+        elif t == "error":
+            error_message = ev.get("message") or "orchestrator error"
+            break
+
+    final_content = "".join(parts).strip()
+    if error_message and not final_content:
+        final_content = f"[error] {error_message}"
+
+    return {
+        "id": completion_id,
+        "object": "chat.completion",
+        "created": created_ts,
+        "model": model_id,
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": final_content},
+            "finish_reason": "stop",
+        }],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+    }
+
+
+@app.get("/api/voices/unmute")
+async def list_unmute_voices() -> Dict[str, object]:
+    """Proxy GET ${speech.unmute_url}/api/v1/voices.
+
+    Returns {"voices": [...], "unmute_url": str} on success, or
+    {"voices": [], "error": str, "unmute_url": str|None} on failure / when
+    no Unmute URL is configured. Never raises 5xx — the renderer should treat
+    an empty list + error as "Unmute unreachable, fall back to Piper".
+    """
+    config = services.load_config()
+    url = (config.speech.unmute_url or "").strip().rstrip("/")
+    if not url:
+        return {"voices": [], "error": "No Unmute URL configured.", "unmute_url": None}
+
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=5.0, verify=False) as client:
+            resp = await client.get(f"{url}/api/v1/voices")
+            resp.raise_for_status()
+            data = resp.json()
+        if not isinstance(data, list):
+            return {"voices": [], "error": "Unmute returned unexpected payload.", "unmute_url": url}
+        return {"voices": data, "unmute_url": url}
+    except httpx.RequestError as exc:
+        return {"voices": [], "error": f"Could not reach Unmute: {exc}", "unmute_url": url}
+    except Exception as exc:
+        return {"voices": [], "error": f"Unmute proxy error: {exc}", "unmute_url": url}
+
+
 @app.post("/api/voices/download/{voice_id}")
 async def download_voice(voice_id: str) -> StreamingResponse:
     """Download a voice model with streaming progress."""

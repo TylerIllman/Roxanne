@@ -45,6 +45,8 @@ class SpeechConfig(BaseModel):
     piper_voice_model_path: Optional[str] = None
     voice_id: str = "en_US-amy-medium"
     speed: float = 1.15  # 1.0=normal, >1=faster
+    unmute_url: Optional[str] = None  # Remote Unmute server (e.g. http://host:port)
+    tts_provider: Literal["piper", "unmute"] = "piper"
 
 
 class AppConfig(BaseModel):
